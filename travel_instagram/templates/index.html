@@ -209,10 +209,30 @@
       font-size: 0.9rem;
       color: var(--muted);
     }
+    .site-nav {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .nav-link {
+      color: var(--muted);
+      text-decoration: none;
+      font-size: 0.9rem;
+      padding: 0.45rem 0.9rem;
+      border-radius: var(--radius);
+      border: 1px solid transparent;
+    }
+    .nav-link:hover { color: var(--text); border-color: var(--border); }
+    .nav-link.active {
+      color: var(--text);
+      background: var(--surface);
+      border-color: var(--border);
+    }
   </style>
 </head>
 <body>
   <div class="wrap">
+    {% include "_nav.html" %}
     <h1>{{ title }}</h1>
     <p class="sub">Enter a travel theme. The server runs Groq, Pexels, and FFmpeg—this can take one to several minutes.</p>
 

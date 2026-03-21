@@ -8,18 +8,22 @@ Run from project root:
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
+from openpyxl import Workbook
 from pydantic import BaseModel, Field
 from starlette.templating import Jinja2Templates
 
 from travel_instagram import config
 from travel_instagram import pipeline
+from travel_instagram import reels_catalog
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +95,68 @@ async def index(request: Request) -> HTMLResponse:
         {
             "request": request,
             "title": "Travel Instagram Generator",
+            "nav_active": "create",
         },
+    )
+
+
+@app.get("/reels", response_class=HTMLResponse)
+async def reels_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "reels.html",
+        {
+            "request": request,
+            "title": "Reel library",
+            "nav_active": "reels",
+        },
+    )
+
+
+@app.get("/api/reels")
+async def api_reels() -> JSONResponse:
+    """All reels from ``carousel/*/summary.json`` (newest first)."""
+    config.ensure_output_dirs()
+    return JSONResponse(content={"reels": reels_catalog.list_reels()})
+
+
+@app.get("/api/reels/export.xlsx")
+async def api_reels_export_xlsx() -> StreamingResponse:
+    """Excel workbook of the reel library."""
+    config.ensure_output_dirs()
+    rows = reels_catalog.list_reels()
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Reels"
+    headers = [
+        "Run ID",
+        "Theme",
+        "Title (hook)",
+        "Hashtags",
+        "Generated (UTC)",
+        "Reel filename",
+        "Reel file present",
+        "Reel path (web)",
+    ]
+    for col, h in enumerate(headers, start=1):
+        ws.cell(row=1, column=col, value=h)
+    for i, r in enumerate(rows, start=2):
+        ws.cell(row=i, column=1, value=r.get("run_id") or "")
+        ws.cell(row=i, column=2, value=r.get("theme") or "")
+        ws.cell(row=i, column=3, value=r.get("title") or "")
+        ws.cell(row=i, column=4, value=r.get("hashtags") or "")
+        ws.cell(row=i, column=5, value=r.get("generated_at") or "")
+        ws.cell(row=i, column=6, value=r.get("reel_filename") or "")
+        ws.cell(row=i, column=7, value="yes" if r.get("reel_exists") else "no")
+        ws.cell(row=i, column=8, value=r.get("reel_video_url") or "")
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    filename = f"velo_reels_{stamp}.xlsx"
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 

@@ -1,0 +1,54 @@
+🔹 How the app uses Meta APIs
+
+Our application integrates with Meta’s Graph API (graph.facebook.com) to enable automated publishing of Instagram Reels.
+
+The workflow operates as follows:
+
+The system generates video content using an external media generation service.
+The backend constructs a request to the Graph API endpoint:
+POST /{ig-user-id}/media to create a media container using a publicly accessible HTTPS video URL.
+After receiving the container ID, the app calls:
+POST /{ig-user-id}/media_publish to publish the Reel to Instagram.
+API calls are made securely over HTTPS using access tokens stored in environment variables.
+
+Platform Data (such as Instagram User ID and access tokens) is:
+
+Stored securely in environment variables (not exposed publicly)
+Used only during API requests
+Not persisted in long-term storage or shared with third parties
+🔹 Components handling Platform Data
+
+The following components interact with Platform Data:
+
+n8n workflow engine
+Executes the automation pipeline and sends API requests to Meta
+Backend media generation service (Velo API)
+Generates video content but does NOT access or store Meta Platform Data
+Environment configuration (server-side)
+Stores:
+Instagram User ID
+Access tokens
+HTTP request modules
+Used to send requests to graph.facebook.com
+
+Platform Data is:
+
+Processed in-memory during execution
+Transmitted securely over HTTPS
+Never cached or stored in databases
+🔹 Primary Use Cases
+
+The app provides automated content publishing for Instagram creators.
+
+Main flow:
+
+User defines a theme (e.g., travel destinations)
+The system generates a short-form video (Reel)
+A caption is automatically created (including destinations and hashtags)
+The Reel is published directly to the user’s Instagram account via Graph API
+
+User value:
+
+Saves time by automating content creation and posting
+Enables consistent social media activity
+Helps creators scale content production
