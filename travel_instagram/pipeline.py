@@ -38,14 +38,27 @@ def _reel_carousel_slide_paths(slide_paths: list[Path], count: int) -> list[Path
     return [pool[i % len(pool)] for i in range(c)]
 
 
+def _normalize_music_selection(music_track_id: str | None) -> str | None:
+    """``None`` / empty / ``__auto__`` → let ``resolve_reel_music`` use env + library defaults."""
+    if music_track_id is None:
+        return None
+    s = str(music_track_id).strip()
+    if not s or s == "__auto__":
+        return None
+    return s
+
+
 def _slug(text: str, max_len: int = 48) -> str:
     s = re.sub(r"[^a-zA-Z0-9]+", "-", text.strip().lower()).strip("-")
     return (s[:max_len] or "theme") + f"-{uuid.uuid4().hex[:8]}"
 
 
-def run_pipeline(theme: str) -> dict[str, Any]:
+def run_pipeline(theme: str, music_track_id: str | None = None) -> dict[str, Any]:
     """
     Generate carousel JPEGs and reel MP4 for one theme.
+
+    ``music_track_id``: relative path under ``music/`` (from the web dropdown), or
+    ``"__none__"`` for no music, or ``None`` to use ``REEL_MUSIC_PATH`` / first library file.
 
     Returns a JSON-serializable summary including file paths and metadata.
     """
@@ -118,7 +131,13 @@ def run_pipeline(theme: str) -> dict[str, Any]:
     reel_work = work / "reel_build"
     reel_work.mkdir(parents=True, exist_ok=True)
     reel_images = _reel_carousel_slide_paths(slide_paths, config.REEL_FRAME_COUNT)
-    media_processor.build_reel_from_images(reel_work, reel_images, reel_path)
+    music_path = config.resolve_reel_music(_normalize_music_selection(music_track_id))
+    media_processor.build_reel_from_images(
+        reel_work,
+        reel_images,
+        reel_path,
+        music_path=music_path,
+    )
 
     summary: dict[str, Any] = {
         "run_id": run_id,
@@ -135,6 +154,7 @@ def run_pipeline(theme: str) -> dict[str, Any]:
             "carousel_slides": [str(p.resolve()) for p in slide_paths],
             "reel_video": str(reel_path.resolve()),
             "reel_source_carousel_slides": [str(p.resolve()) for p in reel_images],
+            "reel_music": str(music_path.resolve()) if music_path else None,
             "work_dir": str(work.resolve()),
         },
     }

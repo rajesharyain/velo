@@ -18,11 +18,13 @@ PEXELS_API_KEY: str | None = os.getenv("PEXELS_API_KEY")
 # Groq chat model — fast, JSON-friendly
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
-# Optional reel soundtrack
+# Optional reel soundtrack (used when no track is chosen in the UI / CLI)
 REEL_MUSIC_PATH: str | None = os.getenv("REEL_MUSIC_PATH")
 
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+MUSIC_LIBRARY_DIR = PROJECT_ROOT / "music"
+MUSIC_AUDIO_EXTENSIONS = frozenset({".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg"})
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", PROJECT_ROOT / "output")).resolve()
 CAROUSEL_DIR = OUTPUT_DIR / "carousel"
 REELS_DIR = OUTPUT_DIR / "reels"
@@ -64,7 +66,70 @@ def resolve_ffmpeg_executable() -> str | None:
     return None
 
 
+def list_music_tracks() -> list[dict[str, str]]:
+    """
+    Audio files under ``music/`` (recursive), sorted by relative path for dropdowns.
+
+    Each item: ``{"id": "<posix relative path>", "label": "<same or basename>"}``.
+    """
+    base = MUSIC_LIBRARY_DIR.resolve()
+    if not base.is_dir():
+        return []
+    out: list[dict[str, str]] = []
+    for p in sorted(base.rglob("*")):
+        if not p.is_file() or p.suffix.lower() not in MUSIC_AUDIO_EXTENSIONS:
+            continue
+        rel = p.relative_to(base)
+        rid = rel.as_posix()
+        out.append({"id": rid, "label": rid})
+    return out
+
+
+def resolve_reel_music(music_track_id: str | None) -> Path | None:
+    """
+    Resolve which audio file to mux onto the reel.
+
+    - ``music_track_id`` is ``None`` (omitted): use ``REEL_MUSIC_PATH`` if it exists,
+      else the first file from ``list_music_tracks()``, else no music.
+    - ``""``, ``"__none__"``, or ``"none"`` (case-insensitive): no music.
+    - Otherwise: must be a relative path under ``music/`` (as returned by
+      ``list_music_tracks()`` ``id``). Path traversal outside ``music/`` is rejected.
+    """
+    base = MUSIC_LIBRARY_DIR.resolve()
+
+    def env_path() -> Path | None:
+        raw = (REEL_MUSIC_PATH or "").strip()
+        if not raw:
+            return None
+        p = Path(raw).expanduser().resolve()
+        return p if p.is_file() else None
+
+    def first_in_library() -> Path | None:
+        tracks = list_music_tracks()
+        if not tracks:
+            return None
+        cand = (base / tracks[0]["id"]).resolve()
+        return cand if cand.is_file() else None
+
+    if music_track_id is None:
+        return env_path() or first_in_library()
+
+    tid = str(music_track_id).strip()
+    if not tid or tid.lower() in ("__none__", "none"):
+        return None
+
+    cand = (base / Path(tid)).resolve()
+    try:
+        cand.relative_to(base)
+    except ValueError:
+        return None
+    if cand.is_file() and cand.suffix.lower() in MUSIC_AUDIO_EXTENSIONS:
+        return cand
+    return None
+
+
 def ensure_output_dirs() -> None:
-    """Create carousel and reels output folders."""
+    """Create carousel, reels, and optional ``music/`` drop folder."""
     CAROUSEL_DIR.mkdir(parents=True, exist_ok=True)
     REELS_DIR.mkdir(parents=True, exist_ok=True)
+    MUSIC_LIBRARY_DIR.mkdir(parents=True, exist_ok=True)

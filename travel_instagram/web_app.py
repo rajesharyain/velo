@@ -77,6 +77,11 @@ def _enrich_summary_for_web(summary: dict[str, Any]) -> dict[str, Any]:
 
 class GenerateBody(BaseModel):
     theme: str = Field(..., min_length=1, max_length=500)
+    music_track_id: str | None = Field(
+        default=None,
+        max_length=512,
+        description="Relative path under music/, __none__ for silence, null/__auto__ for .env/first file.",
+    )
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -109,6 +114,13 @@ async def api_generate(body: GenerateBody) -> JSONResponse:
 
     enriched = _enrich_summary_for_web(summary)
     return JSONResponse(content=enriched)
+
+
+@app.get("/api/music-tracks")
+async def api_music_tracks() -> JSONResponse:
+    """Filenames under ``music/`` for the background-music dropdown."""
+    config.ensure_output_dirs()
+    return JSONResponse(content={"tracks": config.list_music_tracks()})
 
 
 @app.get("/api/health")

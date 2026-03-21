@@ -43,6 +43,14 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Debug logging including ffmpeg command lines.",
     )
+    parser.add_argument(
+        "--music",
+        metavar="TRACK",
+        help=(
+            "Reel audio: relative path under music/ (see GET /api/music-tracks), "
+            "'__none__' for silence, or omit for .env REEL_MUSIC_PATH / first library file."
+        ),
+    )
     args = parser.parse_args(argv)
 
     _configure_logging(args.verbose)
@@ -55,7 +63,7 @@ def main(argv: list[str] | None = None) -> int:
         return 1 if errs else 0
 
     if args.theme:
-        summary = pipeline.run_pipeline(args.theme)
+        summary = pipeline.run_pipeline(args.theme, args.music)
         print(json.dumps(summary, indent=2))
         return 0
 

@@ -397,6 +397,8 @@ def build_reel_from_images(
     work_dir: Path,
     image_paths: Sequence[Path],
     out_mp4: Path,
+    *,
+    music_path: Path | None = None,
 ) -> Path:
     """
     Combine ``REEL_FRAME_COUNT`` stills into one vertical MP4 (images only).
@@ -427,9 +429,8 @@ def build_reel_from_images(
     no_audio = work_dir / "reel_noaudio.mp4"
     _encode_reel_rawvideo_to_mp4(stills_rgb, per, no_audio, "reel rawvideo stdin")
 
-    music = config.REEL_MUSIC_PATH
-    if music and Path(music).is_file():
-        _mux_music(no_audio, Path(music), out_mp4)
+    if music_path is not None and music_path.is_file():
+        _mux_music(no_audio, music_path, out_mp4)
     else:
         shutil.copy(no_audio, out_mp4)
 
