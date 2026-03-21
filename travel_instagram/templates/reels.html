@@ -2,246 +2,352 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>{{ title }} — Velo</title>
   <style>
     :root {
-      --bg: #0f1419;
-      --surface: #1a2332;
-      --border: #2d3a4d;
-      --text: #e7ecf3;
-      --muted: #8b9cb3;
-      --accent: #3d9cf5;
-      --accent-dim: #2563a8;
-      --danger: #f87171;
-      --radius: 10px;
-      --font: "Segoe UI", system-ui, sans-serif;
+      --ig-top: 54px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --ig-blue: #0095f6;
     }
     * { box-sizing: border-box; }
-    body {
+    html, body {
       margin: 0;
-      min-height: 100vh;
+      height: 100%;
+      background: #000;
+      color: #f5f5f5;
       font-family: var(--font);
-      background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
-      color: var(--text);
-      line-height: 1.5;
+      line-height: 1.45;
     }
-    .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
-      padding: 2rem 1.25rem 4rem;
-    }
-    .site-nav {
-      display: flex;
-      gap: 0.5rem;
-      margin-bottom: 1.5rem;
-    }
-    .nav-link {
-      color: var(--muted);
-      text-decoration: none;
-      font-size: 0.9rem;
-      padding: 0.45rem 0.9rem;
-      border-radius: var(--radius);
-      border: 1px solid transparent;
-    }
-    .nav-link:hover { color: var(--text); border-color: var(--border); }
-    .nav-link.active {
-      color: var(--text);
-      background: var(--surface);
-      border-color: var(--border);
-    }
-    h1 {
-      font-size: 1.65rem;
-      font-weight: 600;
-      letter-spacing: -0.02em;
-      margin: 0 0 0.35rem;
-    }
-    .sub { color: var(--muted); font-size: 0.95rem; margin-bottom: 1.25rem; }
-    .toolbar {
+
+    .ig-top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: var(--ig-top);
+      padding: 0.5rem 0.75rem 0.6rem;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       display: flex;
       flex-wrap: wrap;
       align-items: center;
-      gap: 0.75rem 1rem;
-      margin-bottom: 1.5rem;
-      padding: 1rem 1.1rem;
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
+      gap: 0.5rem 0.75rem;
     }
-    .toolbar label { font-size: 0.8rem; color: var(--muted); margin-right: 0.35rem; }
+    .site-nav {
+      display: flex;
+      gap: 0.35rem;
+    }
+    .nav-link {
+      color: rgba(255, 255, 255, 0.55);
+      text-decoration: none;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+    }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active { color: #fff; background: rgba(255, 255, 255, 0.1); }
+
+    .ig-top-title {
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+      margin-right: auto;
+    }
+    .toolbar-inline {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem 0.65rem;
+    }
     .seg {
       display: inline-flex;
-      border-radius: var(--radius);
-      border: 1px solid var(--border);
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
       overflow: hidden;
     }
     .seg button {
       font-family: inherit;
-      font-size: 0.85rem;
-      padding: 0.45rem 0.85rem;
+      font-size: 0.78rem;
+      padding: 0.35rem 0.65rem;
       border: none;
       background: transparent;
-      color: var(--muted);
+      color: rgba(255, 255, 255, 0.55);
       cursor: pointer;
     }
-    .seg button:hover { color: var(--text); }
     .seg button.on {
-      background: var(--accent-dim);
+      background: rgba(255, 255, 255, 0.15);
       color: #fff;
     }
     .btn-export {
       font-family: inherit;
-      font-size: 0.9rem;
-      padding: 0.5rem 1rem;
-      border-radius: var(--radius);
-      border: 1px solid var(--accent);
-      background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dim) 100%);
+      font-size: 0.78rem;
+      padding: 0.38rem 0.75rem;
+      border-radius: 8px;
+      border: none;
+      background: var(--ig-blue);
       color: #fff;
       cursor: pointer;
       text-decoration: none;
       display: inline-block;
+      font-weight: 600;
     }
-    .btn-export:hover { filter: brightness(1.06); }
-    .count { font-size: 0.85rem; color: var(--muted); }
+    .count { font-size: 0.75rem; color: rgba(255, 255, 255, 0.45); }
+
     .spinner {
       display: inline-block;
-      width: 1rem;
-      height: 1rem;
-      border: 2px solid rgba(255,255,255,0.2);
-      border-top-color: var(--accent);
+      width: 0.85rem;
+      height: 0.85rem;
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      border-top-color: var(--ig-blue);
       border-radius: 50%;
       animation: spin 0.7s linear infinite;
       vertical-align: -2px;
-      margin-right: 0.4rem;
+      margin-right: 0.35rem;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .view-cards .table-wrap { display: none; }
-    .view-table .cards-grid { display: none; }
+    #page-root.view-table .ig-feed { display: none; }
+    #page-root.view-feed .table-wrap { display: none; }
 
-    .cards-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-      gap: 1.1rem;
+    .ig-feed {
+      height: calc(100dvh - var(--ig-top));
+      overflow-y: auto;
+      overflow-x: hidden;
+      scroll-snap-type: y mandatory;
+      -webkit-overflow-scrolling: touch;
     }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-      display: flex;
-      flex-direction: column;
-    }
-    .card video {
-      width: 100%;
-      aspect-ratio: 9 / 16;
-      max-height: 320px;
-      object-fit: cover;
-      background: #000;
-      display: block;
-    }
-    .card .no-video {
-      aspect-ratio: 9 / 16;
-      max-height: 320px;
-      background: #111923;
+
+    .ig-slide {
+      min-height: calc(100dvh - var(--ig-top));
+      scroll-snap-align: start;
+      scroll-snap-stop: always;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: var(--muted);
-      font-size: 0.85rem;
-      padding: 1rem;
+      padding: 12px 12px 28px;
+    }
+
+    .ig-slide-inner {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    /* 9:16 phone frame — Instagram Reels proportion */
+    .ig-video-shell {
+      position: relative;
+      width: min(calc(100vw - 24px), calc((100dvh - var(--ig-top) - 100px) * 9 / 16));
+      aspect-ratio: 9 / 16;
+      border-radius: 14px;
+      overflow: hidden;
+      background: #111;
+      box-shadow:
+        0 0 0 1px rgba(255, 255, 255, 0.06),
+        0 24px 60px rgba(0, 0, 0, 0.65);
+    }
+    .ig-video-shell video {
+      width: 100%;
+      height: 100%;
+      display: block;
+      object-fit: cover;
+      background: #000;
+    }
+    .ig-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       text-align: center;
+      padding: 1.25rem;
+      font-size: 0.88rem;
+      color: rgba(255, 255, 255, 0.45);
     }
-    .card-body { padding: 1rem 1.05rem 1.1rem; flex: 1; display: flex; flex-direction: column; gap: 0.5rem; }
-    .card-title { font-weight: 600; font-size: 1rem; margin: 0; line-height: 1.35; }
-    .card-theme { font-size: 0.8rem; color: var(--muted); margin: 0; }
-    .card-tags {
+
+    /* Right rail (decorative, like IG) */
+    .ig-actions {
+      position: absolute;
+      right: 8px;
+      bottom: 88px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+      z-index: 3;
+      pointer-events: none;
+    }
+    .ig-act {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: none;
+      background: rgba(0, 0, 0, 0.35);
+      color: #fff;
+      font-size: 20px;
+      line-height: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    }
+    .ig-act-label {
+      font-size: 0.65rem;
+      color: #fff;
+      margin-top: -10px;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+    }
+
+    .ig-caption {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 28px 12px 14px;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.82) 0%, transparent 100%);
+      z-index: 2;
+    }
+    .ig-cap-user {
       font-size: 0.82rem;
-      color: #a8b8cc;
-      word-break: break-word;
-      margin: 0;
+      font-weight: 700;
+      margin: 0 0 4px;
+      color: #fff;
     }
-    .card-meta { font-size: 0.75rem; color: var(--muted); margin-top: auto; padding-top: 0.5rem; }
-    .card-links { margin-top: 0.35rem; }
-    .card-links a {
-      color: var(--accent);
-      font-size: 0.8rem;
+    .ig-cap-theme {
+      font-size: 0.75rem;
+      color: rgba(255, 255, 255, 0.75);
+      margin: 0 0 6px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .ig-cap-tags {
+      font-size: 0.78rem;
+      color: #b3e5ff;
+      margin: 0;
+      word-break: break-word;
+      display: -webkit-box;
+      -webkit-line-clamp: 3;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .ig-meta-row {
+      margin-top: 10px;
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.35);
+    }
+    .ig-meta-row a {
+      color: var(--ig-blue);
+      text-decoration: none;
       margin-right: 0.75rem;
     }
 
+    .load-line {
+      padding: 1rem 1.25rem;
+      font-size: 0.88rem;
+      color: rgba(255, 255, 255, 0.5);
+    }
+    .err {
+      color: #f87171;
+      padding: 0 1.25rem 1rem;
+    }
+
+    .empty-state {
+      min-height: calc(100dvh - var(--ig-top));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      color: rgba(255, 255, 255, 0.45);
+      font-size: 0.95rem;
+    }
+    .empty-state a { color: var(--ig-blue); }
+
+    /* Table view */
     .table-wrap {
-      overflow-x: auto;
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      background: var(--surface);
+      padding: 1rem;
+      max-width: 1200px;
+      margin: 0 auto;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      font-size: 0.88rem;
+      font-size: 0.82rem;
+      background: rgba(20, 20, 20, 0.95);
+      border-radius: 12px;
+      overflow: hidden;
     }
     th, td {
       text-align: left;
-      padding: 0.65rem 0.85rem;
-      border-bottom: 1px solid var(--border);
+      padding: 0.55rem 0.65rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
       vertical-align: top;
     }
     th {
-      background: #141c28;
-      color: var(--muted);
+      background: rgba(40, 40, 40, 0.95);
+      color: rgba(255, 255, 255, 0.5);
       font-weight: 600;
-      white-space: nowrap;
     }
     tr:last-child td { border-bottom: none; }
-    tr:hover td { background: rgba(61, 156, 245, 0.06); }
-    .cell-title { font-weight: 500; max-width: 200px; }
-    .cell-theme { color: var(--muted); max-width: 220px; }
-    .cell-tags { max-width: 280px; word-break: break-word; color: #a8b8cc; }
-    .badge-miss { color: var(--danger); font-size: 0.75rem; }
-
-    .empty-state {
-      text-align: center;
-      padding: 3rem 1.5rem;
-      color: var(--muted);
-      border: 1px dashed var(--border);
-      border-radius: var(--radius);
+    .cell-reel {
+      width: 108px;
     }
-    .err { color: var(--danger); margin-top: 1rem; }
+    .mini-reel {
+      width: 96px;
+      aspect-ratio: 9 / 16;
+      border-radius: 8px;
+      overflow: hidden;
+      background: #111;
+    }
+    .mini-reel video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+    .cell-title { font-weight: 600; max-width: 160px; color: #fff; }
+    .cell-theme { color: rgba(255, 255, 255, 0.55); max-width: 200px; }
+    .cell-tags { color: #9ecfff; max-width: 240px; word-break: break-word; font-size: 0.78rem; }
+    .badge-miss { color: #f87171; font-size: 0.72rem; }
   </style>
 </head>
 <body>
-  <div class="wrap view-cards" id="page-root">
-    {% include "_nav.html" %}
-    <h1>{{ title }}</h1>
-    <p class="sub">Every row comes from <code>output/carousel/&lt;run&gt;/summary.json</code>. Newest first.</p>
-
-    <div class="toolbar">
-      <div>
-        <label>Layout</label>
+  <div class="view-feed" id="page-root">
+    <header class="ig-top">
+      {% include "_nav.html" %}
+      <span class="ig-top-title">Reels</span>
+      <div class="toolbar-inline">
         <div class="seg" role="group" aria-label="Layout">
-          <button type="button" id="btn-cards" class="on">Cards</button>
+          <button type="button" id="btn-feed" class="on">Feed</button>
           <button type="button" id="btn-table">Table</button>
         </div>
+        <a class="btn-export" href="/api/reels/export.xlsx">Excel</a>
+        <span class="count" id="reel-count"></span>
       </div>
-      <a class="btn-export" href="/api/reels/export.xlsx" id="link-export">Download Excel</a>
-      <span class="count" id="reel-count"></span>
-    </div>
+    </header>
 
-    <p id="load-status" class="sub"><span class="spinner"></span>Loading reels…</p>
+    <p id="load-status" class="load-line"><span class="spinner"></span>Loading…</p>
     <p id="load-err" class="err" hidden></p>
 
-    <div id="empty" class="empty-state" hidden>No reels yet. Go to <a href="/" style="color:var(--accent);">Create</a> to generate one.</div>
+    <div id="empty" class="empty-state" hidden>
+      No reels yet.<br /><a href="/">Create one</a>
+    </div>
 
-    <div class="cards-grid" id="cards-root" hidden></div>
+    <div class="ig-feed" id="feed-root" hidden></div>
     <div class="table-wrap" id="table-root" hidden>
       <table>
         <thead>
           <tr>
+            <th class="cell-reel">9:16</th>
             <th>Title</th>
             <th>Theme</th>
             <th>Hashtags</th>
-            <th>Generated</th>
-            <th>Reel</th>
+            <th>When</th>
           </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -251,12 +357,12 @@
 
   <script>
     const root = document.getElementById("page-root");
-    const btnCards = document.getElementById("btn-cards");
+    const btnFeed = document.getElementById("btn-feed");
     const btnTable = document.getElementById("btn-table");
     const loadStatus = document.getElementById("load-status");
     const loadErr = document.getElementById("load-err");
     const empty = document.getElementById("empty");
-    const cardsRoot = document.getElementById("cards-root");
+    const feedRoot = document.getElementById("feed-root");
     const tableRoot = document.getElementById("table-root");
     const tableBody = document.getElementById("table-body");
     const reelCount = document.getElementById("reel-count");
@@ -266,109 +372,164 @@
     function setView(mode) {
       const isTable = mode === "table";
       root.classList.toggle("view-table", isTable);
-      root.classList.toggle("view-cards", !isTable);
+      root.classList.toggle("view-feed", !isTable);
       btnTable.classList.toggle("on", isTable);
-      btnCards.classList.toggle("on", !isTable);
+      btnFeed.classList.toggle("on", !isTable);
       try { localStorage.setItem(VIEW_KEY, mode); } catch (_) {}
     }
 
-    btnCards.addEventListener("click", () => setView("cards"));
+    btnFeed.addEventListener("click", () => setView("feed"));
     btnTable.addEventListener("click", () => setView("table"));
 
     try {
-      const saved = localStorage.getItem(VIEW_KEY);
-      if (saved === "table") setView("table");
+      if (localStorage.getItem(VIEW_KEY) === "table") setView("table");
     } catch (_) {}
-
-    function esc(s) {
-      if (!s) return "";
-      const d = document.createElement("div");
-      d.textContent = s;
-      return d.innerHTML;
-    }
 
     function render(reels) {
       loadStatus.hidden = true;
-      reelCount.textContent = reels.length ? reels.length + " reel" + (reels.length === 1 ? "" : "s") : "";
+      reelCount.textContent = reels.length
+        ? reels.length + " reel" + (reels.length === 1 ? "" : "s")
+        : "";
 
       if (!reels.length) {
         empty.hidden = false;
-        cardsRoot.hidden = true;
+        feedRoot.hidden = true;
         tableRoot.hidden = true;
         return;
       }
 
       empty.hidden = true;
-      cardsRoot.hidden = false;
+      feedRoot.hidden = false;
       tableRoot.hidden = false;
 
-      cardsRoot.innerHTML = "";
+      feedRoot.innerHTML = "";
       reels.forEach((r) => {
-        const card = document.createElement("article");
-        card.className = "card";
-        const media = document.createElement("div");
+        const slide = document.createElement("section");
+        slide.className = "ig-slide";
+        const inner = document.createElement("div");
+        inner.className = "ig-slide-inner";
+
+        const shell = document.createElement("div");
+        shell.className = "ig-video-shell";
+
         if (r.reel_video_url && r.reel_exists) {
           const v = document.createElement("video");
           v.src = r.reel_video_url;
           v.controls = true;
           v.playsInline = true;
           v.preload = "metadata";
-          media.appendChild(v);
+          v.setAttribute("playsinline", "");
+          shell.appendChild(v);
         } else {
           const ph = document.createElement("div");
-          ph.className = "no-video";
-          ph.textContent = r.reel_exists === false && r.reel_filename
-            ? "Video file missing on disk"
-            : "No preview";
-          media.appendChild(ph);
+          ph.className = "ig-placeholder";
+          ph.textContent =
+            r.reel_exists === false && r.reel_filename
+              ? "Video missing on disk"
+              : "No preview";
+          shell.appendChild(ph);
         }
-        card.appendChild(media);
 
-        const body = document.createElement("div");
-        body.className = "card-body";
-        const h = document.createElement("p");
-        h.className = "card-title";
-        h.textContent = r.title || "(no title)";
-        body.appendChild(h);
-        const th = document.createElement("p");
-        th.className = "card-theme";
-        th.textContent = r.theme || "—";
-        body.appendChild(th);
-        const tg = document.createElement("p");
-        tg.className = "card-tags";
-        tg.textContent = r.hashtags || "—";
-        body.appendChild(tg);
-        const meta = document.createElement("p");
-        meta.className = "card-meta";
-        meta.textContent = r.generated_at || "";
-        body.appendChild(meta);
-        const links = document.createElement("div");
-        links.className = "card-links";
+        const actions = document.createElement("div");
+        actions.className = "ig-actions";
+        [["♡", "12.4K"], ["💬", "328"], ["↗", "Share"]].forEach(([icon, lab]) => {
+          const wrap = document.createElement("div");
+          wrap.style.cssText = "display:flex;flex-direction:column;align-items:center;";
+          const b = document.createElement("span");
+          b.className = "ig-act";
+          b.setAttribute("aria-hidden", "true");
+          b.textContent = icon;
+          const lb = document.createElement("span");
+          lb.className = "ig-act-label";
+          lb.textContent = lab;
+          wrap.appendChild(b);
+          wrap.appendChild(lb);
+          actions.appendChild(wrap);
+        });
+        shell.appendChild(actions);
+
+        const cap = document.createElement("div");
+        cap.className = "ig-caption";
+        const t1 = document.createElement("p");
+        t1.className = "ig-cap-user";
+        t1.textContent = r.title || "Reel";
+        cap.appendChild(t1);
+        const t2 = document.createElement("p");
+        t2.className = "ig-cap-theme";
+        t2.textContent = r.theme || "";
+        cap.appendChild(t2);
+        const t3 = document.createElement("p");
+        t3.className = "ig-cap-tags";
+        t3.textContent = r.hashtags || "";
+        cap.appendChild(t3);
+        shell.appendChild(cap);
+
+        inner.appendChild(shell);
+
+        const meta = document.createElement("div");
+        meta.className = "ig-meta-row";
+        if (r.generated_at) {
+          const sp = document.createElement("span");
+          sp.textContent = r.generated_at + " · ";
+          meta.appendChild(sp);
+        }
         if (r.summary_json_url) {
           const a = document.createElement("a");
           a.href = r.summary_json_url;
           a.target = "_blank";
           a.rel = "noopener";
           a.textContent = "summary.json";
-          links.appendChild(a);
+          meta.appendChild(a);
         }
-        body.appendChild(links);
-        card.appendChild(body);
-        cardsRoot.appendChild(card);
+        inner.appendChild(meta);
+
+        slide.appendChild(inner);
+        feedRoot.appendChild(slide);
       });
 
       tableBody.innerHTML = "";
       reels.forEach((r) => {
         const tr = document.createElement("tr");
-        tr.innerHTML =
-          "<td class=\"cell-title\">" + esc(r.title || "—") + "</td>" +
-          "<td class=\"cell-theme\">" + esc(r.theme || "—") + "</td>" +
-          "<td class=\"cell-tags\">" + esc(r.hashtags || "—") + "</td>" +
-          "<td>" + esc(r.generated_at || "—") + "</td>" +
-          "<td>" + (r.reel_video_url && r.reel_exists
-            ? "<a href=\"" + esc(r.reel_video_url) + "\">Open</a>"
-            : "<span class=\"badge-miss\">" + (r.reel_filename ? "missing" : "—") + "</span>") +
-          "</td>";
+
+        const tdReel = document.createElement("td");
+        tdReel.className = "cell-reel";
+        if (r.reel_video_url && r.reel_exists) {
+          const wrap = document.createElement("div");
+          wrap.className = "mini-reel";
+          const v = document.createElement("video");
+          v.src = r.reel_video_url;
+          v.muted = true;
+          v.playsInline = true;
+          v.preload = "metadata";
+          wrap.appendChild(v);
+          tdReel.appendChild(wrap);
+        } else {
+          const miss = document.createElement("span");
+          miss.className = "badge-miss";
+          miss.textContent = "—";
+          tdReel.appendChild(miss);
+        }
+        tr.appendChild(tdReel);
+
+        const tdTitle = document.createElement("td");
+        tdTitle.className = "cell-title";
+        tdTitle.textContent = r.title || "—";
+        tr.appendChild(tdTitle);
+
+        const tdTheme = document.createElement("td");
+        tdTheme.className = "cell-theme";
+        tdTheme.textContent = r.theme || "—";
+        tr.appendChild(tdTheme);
+
+        const tdTags = document.createElement("td");
+        tdTags.className = "cell-tags";
+        tdTags.textContent = r.hashtags || "—";
+        tr.appendChild(tdTags);
+
+        const tdWhen = document.createElement("td");
+        tdWhen.textContent = r.generated_at || "—";
+        tr.appendChild(tdWhen);
+
         tableBody.appendChild(tr);
       });
     }

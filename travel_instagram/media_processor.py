@@ -285,6 +285,81 @@ def build_carousel_slides(
     return out_paths
 
 
+def _center_text(
+    draw: ImageDraw.ImageDraw,
+    cx: float,
+    cy: float,
+    text: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    fill: tuple[int, int, int] | tuple[int, int, int, int],
+) -> None:
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    draw.text((cx - w / 2, cy - h / 2), text, font=font, fill=fill)
+
+
+def _render_reel_brand_overlay_png(path: Path, brand_text: str) -> None:
+    """Semi-transparent pill with an “info” mark + label for FFmpeg overlay."""
+    font = _find_font(19)
+    font_i = _find_font(17)
+    dummy = Image.new("RGB", (4, 4))
+    dr = ImageDraw.Draw(dummy)
+    bbox = dr.textbbox((0, 0), brand_text, font=font)
+    tw = bbox[2] - bbox[0]
+    th = bbox[3] - bbox[1]
+    ih = 28
+    gap = 10
+    pad_l, pad_r, pad_v = 12, 14, 9
+    w = pad_l + ih + gap + tw + pad_r
+    h = max(ih + pad_v * 2, th + pad_v * 2 + 4)
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    draw.rounded_rectangle((0, 0, w, h), radius=h // 2, fill=(18, 18, 18, 218))
+    cx_i = pad_l + ih // 2
+    cy_i = h // 2
+    ri = ih // 2 - 2
+    draw.ellipse(
+        (cx_i - ri, cy_i - ri, cx_i + ri, cy_i + ri),
+        fill=(255, 255, 255, 240),
+    )
+    _center_text(draw, cx_i, cy_i, "i", font_i, (25, 25, 28))
+    draw.text((pad_l + ih + gap, (h - th) // 2 - 2), brand_text, font=font, fill=(255, 255, 255, 245))
+    path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(path, "PNG")
+
+
+def _apply_reel_brand_overlay(video_in: Path, video_out: Path, work_dir: Path, brand: str) -> None:
+    """Composite brand pill bottom-left (Instagram-style). Re-encodes video (no audio)."""
+    b = (brand or "").strip()
+    if not b:
+        shutil.copy(video_in, video_out)
+        return
+    png = work_dir / "reel_brand_overlay.png"
+    _render_reel_brand_overlay_png(png, b)
+    exe = _ensure_ffmpeg()
+    cmd = [
+        exe,
+        "-y",
+        "-i",
+        str(video_in),
+        "-i",
+        str(png),
+        "-filter_complex",
+        "[0:v][1:v]overlay=20:main_h-overlay_h-32",
+        "-c:v",
+        "libx264",
+        "-pix_fmt",
+        "yuv420p",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-an",
+        str(video_out),
+    ]
+    _run_ffmpeg_cmd(cmd, "reel brand overlay")
+
+
 def _mux_music(video_path: Path, music_path: Path, out: Path) -> None:
     exe = _ensure_ffmpeg()
     cmd = [
@@ -429,9 +504,12 @@ def build_reel_from_images(
     no_audio = work_dir / "reel_noaudio.mp4"
     _encode_reel_rawvideo_to_mp4(stills_rgb, per, no_audio, "reel rawvideo stdin")
 
+    branded = work_dir / "reel_branded_noaudio.mp4"
+    _apply_reel_brand_overlay(no_audio, branded, work_dir, config.REEL_BRAND_TEXT)
+
     if music_path is not None and music_path.is_file():
-        _mux_music(no_audio, music_path, out_mp4)
+        _mux_music(branded, music_path, out_mp4)
     else:
-        shutil.copy(no_audio, out_mp4)
+        shutil.copy(branded, out_mp4)
 
     return out_mp4

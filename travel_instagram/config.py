@@ -31,7 +31,12 @@ REELS_DIR = OUTPUT_DIR / "reels"
 
 # Media preferences
 CAROUSEL_SIZE = (1080, 1350)  # 4:5 feed
-REEL_SIZE = (1080, 1920)  # 9:16
+# Reels: portrait 9:16 (Instagram Reels). Override with REEL_WIDTH × REEL_HEIGHT if needed.
+_REEL_W = max(360, int(os.getenv("REEL_WIDTH", "1080")))
+_REEL_H = max(640, int(os.getenv("REEL_HEIGHT", "1920")))
+REEL_SIZE = (_REEL_W, _REEL_H)
+# Burned into the exported reel MP4 (pill with “i” + text). Empty to disable.
+REEL_BRAND_TEXT: str = (os.getenv("REEL_BRAND_TEXT", "budgetwing.com") or "").strip()
 DESTINATION_COUNT_MIN = 3
 DESTINATION_COUNT_MAX = 5
 IMAGES_PER_DESTINATION = (2, 3)  # min, max
