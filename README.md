@@ -74,8 +74,8 @@ The CLI prints the same summary as JSON on stdout.
 
 | Module | Role |
 |--------|------|
-| `travel_instagram/groq_service.py` | Theme → JSON (hook, CTA, hashtags, 3–5 destinations + captions) |
-| `travel_instagram/pexels_service.py` | Per destination: 2–3 portrait images + optional vertical video URL |
+| `travel_instagram/groq_service.py` | Theme → JSON: destinations with `scape_types`, `vibe`, `pexels_search_query` + hook/CTA/hashtags |
+| `travel_instagram/pexels_service.py` | Images from Groq-tuned query (fallback to place name if empty results) |
 | `travel_instagram/media_processor.py` | PIL carousel; reel = raw RGB → FFmpeg libx264 + optional audio |
 | `travel_instagram/pipeline.py` | Downloads, orchestration, `summary.json` |
 | `travel_instagram/cli.py` | argparse CLI |
@@ -83,6 +83,7 @@ The CLI prints the same summary as JSON on stdout.
 ## Behavior notes
 
 - **Reel** uses **only images** (no stock video downloads). Carousel slides are separate (text overlays for the feed).  
+- **Groq** labels each stop with **scape_types** (beach, mountains, city, …), a **vibe** line, and a **pexels_search_query**; **Pexels** runs on that query first (then falls back to the place name if needed).  
 - **Duplicates**: destinations deduped by name (case-insensitive).  
 - **Captions**: trimmed to 12 words in validation.  
 - **Media**: Pexels portrait search first; image search falls back to any orientation if empty.  

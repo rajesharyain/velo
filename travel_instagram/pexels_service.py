@@ -23,8 +23,8 @@ PEXELS_VIDEO_SEARCH = "https://api.pexels.com/videos/search"
 class PexelsMediaBundle:
     """Resolved URLs for one destination."""
 
-    destination: str
-    query: str
+    destination: str  # display name from Groq
+    query: str  # exact string sent to Pexels (from pexels_search_query or destination)
     image_urls: list[str] = field(default_factory=list)
     video: dict[str, Any] | None = None  # {url, width, height, duration}
 
@@ -92,9 +92,13 @@ def fetch_media_for_destination(
     api_key: str | None = None,
     image_count: int | None = None,
     include_video: bool = False,
+    pexels_search_query: str | None = None,
 ) -> PexelsMediaBundle:
     """
     Search Pexels for images (portrait). Optionally fetch a vertical video.
+
+    ``pexels_search_query`` should be Groq-generated (place + scenery keywords).
+    If omitted, ``destination_name`` is used as the search string.
 
     `image_count` defaults to a random value between IMAGES_PER_DESTINATION.
     When ``include_video`` is False (default), no video API call is made.
@@ -107,10 +111,11 @@ def fetch_media_for_destination(
 
     low, high = config.IMAGES_PER_DESTINATION
     n_img = image_count if image_count is not None else random.randint(low, high)
-    query = destination_name.strip()
+    name = destination_name.strip()
+    query = (pexels_search_query or "").strip() or name
 
     headers = _auth_headers(key)
-    bundle = PexelsMediaBundle(destination=destination_name, query=query)
+    bundle = PexelsMediaBundle(destination=name, query=query)
 
     with httpx.Client(timeout=60.0) as client:
         # Images — portrait orientation for carousel/reel crops
@@ -140,6 +145,42 @@ def fetch_media_for_destination(
             photos = ir2.json().get("photos") or []
 
         bundle.image_urls = _pick_image_urls(photos, n_img)
+        if not bundle.image_urls and query != name:
+            logger.warning(
+                "No Pexels images for scenery query; retrying with destination name only: %s",
+                name,
+            )
+            ir3 = client.get(
+                PEXELS_IMAGE_SEARCH,
+                headers=headers,
+                params={
+                    "query": name,
+                    "per_page": config.PEXELS_IMAGES_PAGE_SIZE,
+                    "orientation": "portrait",
+                },
+            )
+            ir3.raise_for_status()
+            photos3 = ir3.json().get("photos") or []
+            if not photos3:
+                ir4 = client.get(
+                    PEXELS_IMAGE_SEARCH,
+                    headers=headers,
+                    params={
+                        "query": name,
+                        "per_page": config.PEXELS_IMAGES_PAGE_SIZE,
+                    },
+                )
+                ir4.raise_for_status()
+                photos3 = ir4.json().get("photos") or []
+            bundle.image_urls = _pick_image_urls(photos3, n_img)
+            if bundle.image_urls:
+                bundle = PexelsMediaBundle(
+                    destination=name,
+                    query=name,
+                    image_urls=bundle.image_urls,
+                    video=bundle.video,
+                )
+
         if not bundle.image_urls:
             logger.warning("No Pexels images for query: %s", query)
 
@@ -159,5 +200,7 @@ def fetch_media_for_destination(
             bundle.video = _best_portrait_video(vids)
             if bundle.video is None and vids:
                 logger.debug("No portrait video file for %s.", query)
+
+    logger.debug("Pexels image search query=%r (destination=%r)", query, name)
 
     return bundle

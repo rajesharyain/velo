@@ -69,8 +69,18 @@ def run_pipeline(theme: str) -> dict[str, Any]:
     with httpx.Client(timeout=120.0, follow_redirects=True) as client:
         for i, dest in enumerate(destinations):
             name = str(dest.get("destination", ""))
-            logger.info("Pexels: fetching images for %r (no video)", name)
-            b = pexels_service.fetch_media_for_destination(name, include_video=False)
+            pq = str(dest.get("pexels_search_query") or "").strip()
+            logger.info(
+                "Pexels: images for %r (query=%r, scape_types=%s)",
+                name,
+                pq or name,
+                dest.get("scape_types"),
+            )
+            b = pexels_service.fetch_media_for_destination(
+                name,
+                include_video=False,
+                pexels_search_query=pq or None,
+            )
             bundles.append(b)
 
             imgs: list[Path] = []
@@ -126,9 +136,13 @@ def run_pipeline(theme: str) -> dict[str, Any]:
     }
 
     for i, b in enumerate(bundles):
+        dmeta = destinations[i] if i < len(destinations) else {}
         row: dict[str, Any] = {
             "destination": b.destination,
-            "query": b.query,
+            "pexels_query_used": b.query,
+            "scape_types": dmeta.get("scape_types"),
+            "vibe": dmeta.get("vibe"),
+            "groq_pexels_search_query": dmeta.get("pexels_search_query"),
             "image_urls": list(b.image_urls),
             "video_meta": b.video,
             "local_images": [str(p.resolve()) for p in image_paths_by_dest[i]],
