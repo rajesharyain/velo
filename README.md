@@ -3,7 +3,7 @@
 Automated pipeline that uses **Groq** (LLM) for travel copy and **Pexels** for media, then builds:
 
 - **Carousel**: 5–10 JPEG slides at **1080×1350** with title, destination captions, hashtags slide, and CTA  
-- **Reel**: **1080×1920** MP4 from **five downloaded photos only** (no Pexels video): PIL decodes each image, streams **raw RGB24** into FFmpeg (no JPEG/PNG demuxer — avoids “broken data stream” on Windows), then libx264. Optional background music  
+- **Reel**: **1080×1920** MP4 built from the **first five carousel slides** (same JPEGs as the feed, with hook/destination/hashtag/CTA text). PIL decodes each slide, streams **raw RGB24** into FFmpeg, then libx264. Optional background music  
 
 ## Requirements
 
@@ -82,7 +82,7 @@ The CLI prints the same summary as JSON on stdout.
 
 ## Behavior notes
 
-- **Reel** uses **only images** (no stock video downloads). Carousel slides are separate (text overlays for the feed).  
+- **Reel** stitches **carousel slide JPEGs** (not raw downloads), so on-screen text matches the carousel.  
 - **Groq** labels each stop with **scape_types** (beach, mountains, city, …), a **vibe** line, and a **pexels_search_query**; **Pexels** runs on that query first (then falls back to the place name if needed).  
 - **Duplicates**: destinations deduped by name (case-insensitive).  
 - **Captions**: trimmed to 12 words in validation.  

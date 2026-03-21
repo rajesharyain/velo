@@ -22,16 +22,20 @@ from travel_instagram import pexels_service
 logger = logging.getLogger(__name__)
 
 
-def _reel_source_images(image_paths_by_dest: list[list[Path]], count: int) -> list[Path]:
-    """First ``count`` downloaded photos in destination order; cycle if fewer files exist."""
-    ordered: list[Path] = []
-    for group in image_paths_by_dest:
-        for p in group:
-            if p.is_file():
-                ordered.append(p)
-    if not ordered:
-        raise RuntimeError("No downloaded images available for reel.")
-    return [ordered[i % len(ordered)] for i in range(count)]
+def _reel_carousel_slide_paths(slide_paths: list[Path], count: int) -> list[Path]:
+    """
+    Use the rendered carousel JPEGs (with captions) for the reel.
+
+    Takes the first ``count`` slides in order (slide_01 …). If there are fewer
+    slides than ``count``, repeats slides cyclically to fill.
+    """
+    pool = [p for p in slide_paths if p.is_file()]
+    if not pool:
+        raise RuntimeError("No carousel slide files exist for reel.")
+    c = max(1, count)
+    if len(pool) >= c:
+        return pool[:c]
+    return [pool[i % len(pool)] for i in range(c)]
 
 
 def _slug(text: str, max_len: int = 48) -> str:
@@ -113,7 +117,7 @@ def run_pipeline(theme: str) -> dict[str, Any]:
     reel_path = config.REELS_DIR / reel_name
     reel_work = work / "reel_build"
     reel_work.mkdir(parents=True, exist_ok=True)
-    reel_images = _reel_source_images(image_paths_by_dest, config.REEL_FRAME_COUNT)
+    reel_images = _reel_carousel_slide_paths(slide_paths, config.REEL_FRAME_COUNT)
     media_processor.build_reel_from_images(reel_work, reel_images, reel_path)
 
     summary: dict[str, Any] = {
@@ -130,7 +134,7 @@ def run_pipeline(theme: str) -> dict[str, Any]:
         "outputs": {
             "carousel_slides": [str(p.resolve()) for p in slide_paths],
             "reel_video": str(reel_path.resolve()),
-            "reel_source_images": [str(p.resolve()) for p in reel_images],
+            "reel_source_carousel_slides": [str(p.resolve()) for p in reel_images],
             "work_dir": str(work.resolve()),
         },
     }
