@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --accent-dim: #2563a8;
+      --danger: #f87171;
+      --radius: 10px;
+      --font: "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.35rem;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.75rem;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    textarea {
+      width: 100%;
+      min-height: 88px;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+      resize: vertical;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(61, 156, 245, 0.2);
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-top: 1rem;
+    }
+    button {
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.65rem 1.35rem;
+      border-radius: var(--radius);
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dim) 100%);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(61, 156, 245, 0.35);
+    }
+    button:hover:not(:disabled) {
+      filter: brightness(1.08);
+    }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .panel {
+      margin-top: 2rem;
+      padding: 1.25rem 1.35rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      display: none;
+    }
+    .panel.visible { display: block; }
+    .panel h2 {
+      font-size: 1.1rem;
+      margin: 0 0 1rem;
+      font-weight: 600;
+    }
+    .error {
+      color: var(--danger);
+      font-size: 0.95rem;
+    }
+    .meta {
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 1rem;
+    }
+    .hook {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+    .cta-line {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--muted);
+      margin-top: 1rem;
+    }
+    ul.dest {
+      margin: 0;
+      padding-left: 1.2rem;
+    }
+    ul.dest li { margin-bottom: 0.35rem; }
+    .tags {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+      word-break: break-word;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+      gap: 0.65rem;
+      margin-top: 1rem;
+    }
+    .grid a {
+      display: block;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--border);
+      aspect-ratio: 1080 / 1350;
+    }
+    .grid img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      vertical-align: middle;
+    }
+    video {
+      width: 100%;
+      max-width: 320px;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      margin-top: 0.75rem;
+      background: #000;
+    }
+    .links a {
+      color: var(--accent);
+      text-decoration: none;
+      margin-right: 1rem;
+      font-size: 0.9rem;
+    }
+    .links a:hover { text-decoration: underline; }
+    .spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: -2px;
+      margin-right: 0.4rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .status {
+      margin-top: 1rem;
+      font-size: 0.9rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>{{ title }}</h1>
+    <p class="sub">Enter a travel theme. The server runs Groq, Pexels, and FFmpeg—this can take one to several minutes.</p>
+
+    <form id="form" action="#" method="post">
+      <label for="theme">Theme</label>
+      <textarea id="theme" name="theme" placeholder="e.g. hidden beaches in the Mediterranean" required></textarea>
+      <div class="row">
+        <button type="submit" id="submit">Generate carousel &amp; reel</button>
+        <span class="hint">Requires <code>GROQ_API_KEY</code>, <code>PEXELS_API_KEY</code>, and FFmpeg on the server.</span>
+      </div>
+    </form>
+
+    <p class="status" id="status" hidden></p>
+
+    <div class="panel" id="error-panel">
+      <h2>Something went wrong</h2>
+      <p class="error" id="error-msg"></p>
+    </div>
+
+    <div class="panel" id="result-panel">
+      <h2>Done</h2>
+      <p class="meta" id="run-meta"></p>
+      <p class="hook" id="out-hook"></p>
+      <ul class="dest" id="out-dest"></ul>
+      <p class="tags" id="out-tags"></p>
+      <p class="cta-line" id="out-cta"></p>
+      <h2 style="margin-top:1.25rem;font-size:1rem;">Carousel</h2>
+      <div class="grid" id="out-slides"></div>
+      <h2 style="margin-top:1.25rem;font-size:1rem;">Reel</h2>
+      <video id="out-video" controls playsinline></video>
+      <p class="links" style="margin-top:1rem;">
+        <a id="link-json" href="#" target="_blank" rel="noopener">summary.json</a>
+      </p>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("form");
+    const themeEl = document.getElementById("theme");
+    const submitBtn = document.getElementById("submit");
+    const statusEl = document.getElementById("status");
+    const errorPanel = document.getElementById("error-panel");
+    const errorMsg = document.getElementById("error-msg");
+    const resultPanel = document.getElementById("result-panel");
+    const runMeta = document.getElementById("run-meta");
+    const outHook = document.getElementById("out-hook");
+    const outDest = document.getElementById("out-dest");
+    const outTags = document.getElementById("out-tags");
+    const outSlides = document.getElementById("out-slides");
+    const outVideo = document.getElementById("out-video");
+    const linkJson = document.getElementById("link-json");
+    const outCta = document.getElementById("out-cta");
+
+    function hidePanels() {
+      errorPanel.classList.remove("visible");
+      resultPanel.classList.remove("visible");
+    }
+
+    function showError(msg) {
+      hidePanels();
+      errorMsg.textContent = msg;
+      errorPanel.classList.add("visible");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const theme = themeEl.value.trim();
+      if (!theme) return;
+
+      hidePanels();
+      statusEl.hidden = false;
+      statusEl.innerHTML = '<span class="spinner"></span>Generating… this may take a few minutes.';
+      submitBtn.disabled = true;
+
+      try {
+        const res = await fetch("/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ theme }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          const detail = data.detail;
+          const msg = typeof detail === "string"
+            ? detail
+            : Array.isArray(detail)
+              ? detail.map((d) => d.msg || d).join(" ")
+              : res.statusText;
+          showError(msg || "Request failed");
+          return;
+        }
+
+        const c = data.content || {};
+        const outs = data.outputs || {};
+
+        runMeta.textContent = "Run: " + (data.run_id || "—") + " · Theme: " + (data.theme || theme);
+        outHook.textContent = c.hook || "";
+        outDest.innerHTML = "";
+        (c.destinations || []).forEach((d) => {
+          const li = document.createElement("li");
+          li.textContent = (d.destination || "") + " — " + (d.caption || "");
+          outDest.appendChild(li);
+        });
+        const tags = (c.hashtags || []).map((t) => "#" + String(t).replace(/^#/, ""));
+        outTags.textContent = tags.length ? tags.join(" ") : "";
+
+        outSlides.innerHTML = "";
+        const urls = outs.carousel_slides_urls || [];
+        urls.forEach((url, i) => {
+          if (!url) return;
+          const a = document.createElement("a");
+          a.href = url;
+          a.target = "_blank";
+          a.rel = "noopener";
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = "Slide " + (i + 1);
+          img.loading = "lazy";
+          a.appendChild(img);
+          outSlides.appendChild(a);
+        });
+
+        const reelUrl = outs.reel_video_url;
+        if (reelUrl) {
+          outVideo.src = reelUrl;
+          outVideo.classList.remove("hidden");
+        } else {
+          outVideo.removeAttribute("src");
+        }
+
+        const jsonUrl = outs.summary_json_url;
+        if (jsonUrl) {
+          linkJson.href = jsonUrl;
+          linkJson.style.display = "";
+        } else {
+          linkJson.style.display = "none";
+        }
+
+        outCta.textContent = c.cta ? "CTA: " + c.cta : "";
+
+        resultPanel.classList.add("visible");
+      } catch (err) {
+        showError(err.message || "Network error");
+      } finally {
+        statusEl.hidden = true;
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
