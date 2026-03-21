@@ -124,6 +124,7 @@ def run_pipeline(theme: str, music_track_id: str | None = None) -> dict[str, Any
         carousel_dir,
         content,
         image_paths_by_dest,
+        reel_theme=theme,
     )
 
     reel_name = f"reel_{run_slug}.mp4"

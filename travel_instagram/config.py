@@ -31,6 +31,17 @@ REELS_DIR = OUTPUT_DIR / "reels"
 
 # Media preferences
 CAROUSEL_SIZE = (1080, 1350)  # 4:5 feed
+# Final carousel slide primary text (replaces on-image Groq CTA such as “Book your dream trip”)
+# Newlines become separate paragraphs (stacked lines) for long closing copy
+CAROUSEL_CLOSING_TEXT: str = (
+    os.getenv(
+        "CAROUSEL_CLOSING_TEXT",
+        "Explore more\nvisit budgetwing.com\nfor cheap flights.",
+    )
+    or "Explore more\nvisit budgetwing.com\nfor cheap flights."
+).strip()
+# Move the text block up by this fraction of slide height (0–0.25) for clearer bottom area
+CAROUSEL_TEXT_BIAS_UP_RATIO: float = float(os.getenv("CAROUSEL_TEXT_BIAS_UP_RATIO", "0.1"))
 # Reels: portrait 9:16 (Instagram Reels). Override with REEL_WIDTH × REEL_HEIGHT if needed.
 _REEL_W = max(360, int(os.getenv("REEL_WIDTH", "1080")))
 _REEL_H = max(640, int(os.getenv("REEL_HEIGHT", "1920")))

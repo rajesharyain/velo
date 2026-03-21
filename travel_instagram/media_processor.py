@@ -119,6 +119,49 @@ def _cover_crop(im: Image.Image, size: tuple[int, int]) -> Image.Image:
     return im.crop((left, top, left + tw, top + th))
 
 
+def _split_long_token(
+    token: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    draw: ImageDraw.ImageDraw,
+    max_width: int,
+) -> list[str]:
+    """Break a single word/token across lines when it is wider than ``max_width``."""
+    if not token:
+        return []
+    if draw.textbbox((0, 0), token, font=font)[2] - draw.textbbox((0, 0), token, font=font)[0] <= max_width:
+        return [token]
+    parts: list[str] = []
+    acc = ""
+    for ch in token:
+        trial = acc + ch
+        if draw.textbbox((0, 0), trial, font=font)[2] - draw.textbbox((0, 0), trial, font=font)[0] <= max_width:
+            acc = trial
+        else:
+            if acc:
+                parts.append(acc)
+            acc = ch
+    if acc:
+        parts.append(acc)
+    return parts if parts else [token[:32]]
+
+
+def _carousel_text_max_width(tw: int) -> int:
+    """
+    Max line width for text drawn on a 4:5 carousel slide.
+
+    Reels center-crop the same JPEG to 9:16, which removes horizontal strips; only the
+    middle ``CAROUSEL_HEIGHT / REEL_HEIGHT`` fraction of the slide width stays visible.
+    """
+    cw, ch = config.CAROUSEL_SIZE
+    rw, rh = config.REEL_SIZE
+    if cw <= 0 or rh <= 0:
+        return max(200, tw - 120)
+    # Same width canvas (1080): visible width ratio = ch/rh when crop is horizontal-only
+    visible_ratio = (ch * rw) / (rh * cw)
+    inner = int(tw * visible_ratio) - 88
+    return max(240, min(tw - 80, inner))
+
+
 def _darken_backdrop(base: Image.Image, amount: float = 0.45) -> Image.Image:
     """Slight darken + blur for text legibility."""
     overlay = Image.new("RGBA", base.size, (0, 0, 0, int(255 * amount)))
@@ -133,10 +176,13 @@ def render_text_slide(
     primary_text: str,
     secondary_text: str | None = None,
     size: tuple[int, int] | None = None,
+    *,
+    vertical_bias_up_ratio: float | None = None,
 ) -> Path:
     """
     Create a JPEG with centered text over a darkened region.
     `primary_text` is larger; `secondary_text` optional subtitle.
+    ``vertical_bias_up_ratio`` shifts the whole block upward (fraction of slide height).
     """
     size = size or config.CAROUSEL_SIZE
     tw, th = size
@@ -145,54 +191,99 @@ def render_text_slide(
     canvas = _darken_backdrop(im, amount=0.42)
 
     draw = ImageDraw.Draw(canvas)
-    title_font = _find_font(52)
-    body_font = _find_font(34)
+    max_w = _carousel_text_max_width(tw)
 
     def wrap_lines(text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int) -> list[str]:
         if font == ImageFont.load_default():
-            return textwrap.wrap(text, width=28)
+            return textwrap.wrap(text, width=max(12, max_width // 14))
         lines: list[str] = []
-        for paragraph in text.split("\n"):
+        for paragraph in text.replace("\r\n", "\n").split("\n"):
+            paragraph = paragraph.strip()
+            if not paragraph:
+                if lines and lines[-1] != "":
+                    lines.append("")
+                continue
             words = paragraph.split()
             cur: list[str] = []
             for w in words:
-                trial = (" ".join(cur + [w])).strip()
-                bbox = draw.textbbox((0, 0), trial, font=font)
-                if bbox[2] - bbox[0] <= max_width:
-                    cur.append(w)
-                else:
-                    if cur:
-                        lines.append(" ".join(cur))
-                    cur = [w]
+                for piece in _split_long_token(w, font, draw, max_width):
+                    trial = (" ".join(cur + [piece])).strip()
+                    bbox = draw.textbbox((0, 0), trial, font=font)
+                    if bbox[2] - bbox[0] <= max_width:
+                        cur.append(piece)
+                    else:
+                        if cur:
+                            lines.append(" ".join(cur))
+                        cur = [piece]
             if cur:
                 lines.append(" ".join(cur))
+        while lines and lines[-1] == "":
+            lines.pop()
         return lines
 
-    max_w = tw - 120
-    p_lines = wrap_lines(primary_text.strip(), title_font, max_w)
-    s_lines = wrap_lines(secondary_text.strip(), body_font, max_w) if secondary_text else []
+    primary = (primary_text or "").strip() or "."
+    title_sizes = [48, 42, 36, 32, 28, 24]
+    p_lines: list[str] = []
+    title_font = _find_font(title_sizes[0])
+    for tsize in title_sizes:
+        title_font = _find_font(tsize)
+        p_lines = wrap_lines(primary, title_font, max_w)
+        if not p_lines:
+            p_lines = [primary[:80]]
+        longest = 0
+        for ln in p_lines:
+            if not ln:
+                continue
+            b = draw.textbbox((0, 0), ln, font=title_font)
+            longest = max(longest, b[2] - b[0])
+        if longest <= max_w and len([x for x in p_lines if x]) <= 7:
+            break
 
-    line_gap_title = 8
-    line_gap_body = 6
-    title_h = sum(
-        draw.textbbox((0, 0), ln, font=title_font)[3]
-        - draw.textbbox((0, 0), ln, font=title_font)[1]
-        + line_gap_title
-        for ln in p_lines
-    )
-    body_h = sum(
-        draw.textbbox((0, 0), ln, font=body_font)[3]
-        - draw.textbbox((0, 0), ln, font=body_font)[1]
-        + line_gap_body
-        for ln in s_lines
-    ) if s_lines else 0
+    body_sizes = [32, 28, 26, 24]
+    s_lines: list[str] = []
+    body_font = _find_font(body_sizes[0])
+    if secondary_text and str(secondary_text).strip():
+        sec = str(secondary_text).strip()
+        for bsize in body_sizes:
+            body_font = _find_font(bsize)
+            s_lines = wrap_lines(sec, body_font, max_w)
+            widths_b = [
+                draw.textbbox((0, 0), ln, font=body_font)[2]
+                - draw.textbbox((0, 0), ln, font=body_font)[0]
+                for ln in s_lines
+                if ln
+            ]
+            longest = max(widths_b) if widths_b else 0
+            if longest <= max_w and len([x for x in s_lines if x]) <= 8:
+                break
+
+    line_gap_title = 10
+    line_gap_body = 8
+    def line_height(ln: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, gap: int) -> int:
+        if not ln:
+            return gap // 2
+        b = draw.textbbox((0, 0), ln, font=font)
+        return b[3] - b[1] + gap
+
+    title_h = sum(line_height(ln, title_font, line_gap_title) for ln in p_lines)
+    body_h = sum(line_height(ln, body_font, line_gap_body) for ln in s_lines) if s_lines else 0
     gap_block = 28 if s_lines else 0
     total_h = title_h + gap_block + body_h
-    y = (th - total_h) // 2
+    bias = (
+        float(vertical_bias_up_ratio)
+        if vertical_bias_up_ratio is not None
+        else float(config.CAROUSEL_TEXT_BIAS_UP_RATIO)
+    )
+    bias = max(0.0, min(0.28, bias))
+    y = (th - total_h) // 2 - int(th * bias)
+    y = max(24, y)
 
     shadow = (4, 4)
 
     for ln in p_lines:
+        if not ln:
+            y += line_gap_title // 2
+            continue
         bbox = draw.textbbox((0, 0), ln, font=title_font)
         h = bbox[3] - bbox[1]
         x = (tw - (bbox[2] - bbox[0])) // 2
@@ -204,6 +295,9 @@ def render_text_slide(
     y += gap_block - line_gap_title if s_lines else 0
 
     for ln in s_lines:
+        if not ln:
+            y += line_gap_body // 2
+            continue
         bbox = draw.textbbox((0, 0), ln, font=body_font)
         h = bbox[3] - bbox[1]
         x = (tw - (bbox[2] - bbox[0])) // 2
@@ -222,15 +316,17 @@ def build_carousel_slides(
     work_dir: Path,
     content: dict[str, Any],
     image_paths_by_dest_index: Sequence[list[Path]],
+    *,
+    reel_theme: str = "",
 ) -> list[Path]:
     """
-    Build 5–10 JPEG slides (1080×1350): hook, one slide per destination (caption),
-    optional bonus photo slides, hashtag slide, CTA.
+    Build 5–10 JPEG slides (1080×1350): user theme as first title, destinations,
+    optional bonus slides, hashtag slide, fixed closing (see ``CAROUSEL_CLOSING_TEXT``).
 
     `image_paths_by_dest_index` aligns with `content['destinations']` indices.
     """
     hook = str(content.get("hook", ""))
-    cta = str(content.get("cta", ""))
+    first_title = (reel_theme or "").strip() or hook
     tags = content.get("hashtags") or []
     hashtag_line = " ".join(f"#{t}" for t in tags[:12]) if tags else "#travel #wanderlust"
 
@@ -241,7 +337,7 @@ def build_carousel_slides(
 
     slides_spec: list[tuple[str, str | None, Path]] = []
 
-    slides_spec.append((hook, None, random.choice(all_images)))
+    slides_spec.append((first_title, None, random.choice(all_images)))
 
     for i, dest in enumerate(destinations):
         name = str(dest.get("destination", ""))
@@ -262,7 +358,8 @@ def build_carousel_slides(
     if len(slides_spec) < 9:
         slides_spec.append((hashtag_line, None, random.choice(all_images)))
 
-    slides_spec.append((cta, None, random.choice(all_images)))
+    closing = (config.CAROUSEL_CLOSING_TEXT or "").strip() or hook
+    slides_spec.append((closing, None, random.choice(all_images)))
 
     while len(slides_spec) < 5:
         slides_spec.insert(-1, ("Discover more", None, random.choice(all_images)))
@@ -276,10 +373,17 @@ def build_carousel_slides(
             merged.insert(-1, ("Travel inspo", None, random.choice(all_images)))
         slides_spec = merged[:10]
 
+    bias = max(0.0, min(0.28, float(config.CAROUSEL_TEXT_BIAS_UP_RATIO)))
     out_paths: list[Path] = []
     for idx, (primary, secondary, img) in enumerate(slides_spec):
         out = work_dir / f"slide_{idx + 1:02d}.jpg"
-        render_text_slide(img, out, primary, secondary)
+        render_text_slide(
+            img,
+            out,
+            primary,
+            secondary,
+            vertical_bias_up_ratio=bias,
+        )
         out_paths.append(out)
 
     return out_paths
