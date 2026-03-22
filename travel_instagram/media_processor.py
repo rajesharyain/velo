@@ -166,21 +166,23 @@ def _draw_slide_footer_brand(
     draw: ImageDraw.ImageDraw,
     tw: int,
     th: int,
+    *,
+    y_top: int,
 ) -> None:
-    """Bottom-center domain watermark on carousel/reel source frames (readable on busy photos)."""
+    """Horizontally centered brand line below the caption stack (``y_top`` = first pixel row for text)."""
     label = (config.REEL_BRAND_TEXT or "").strip()
     if not label:
         return
-    size = max(22, min(34, int(th * 0.018)))
+    base_px = max(22, min(34, int(th * 0.018)))
+    size = base_px + 1
     font = _find_font(size)
     bbox = draw.textbbox((0, 0), label, font=font)
     bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    margin_bottom = max(40, int(th * 0.032))
     x = max(8, (tw - bw) // 2)
-    y = th - margin_bottom - bh
+    y = int(y_top)
     y = max(8, min(y, th - bh - 8))
     rgb = config.BRAND_DOMAIN_RGB
-    sw = max(2, min(5, th // 400))
+    sw = max(2, min(5, th // 380))
     draw.text(
         (x, y),
         label,
@@ -299,10 +301,19 @@ def _draw_brand_line_centered(
     return line_h
 
 
-def _darken_backdrop(base: Image.Image, amount: float = 0.45) -> Image.Image:
-    """Slight darken + blur for text legibility."""
+def _darken_backdrop(
+    base: Image.Image,
+    amount: float = 0.45,
+    *,
+    blur_radius: float = 2.0,
+) -> Image.Image:
+    """Light darken + optional blur for text legibility (keep ``amount`` low for bright photos)."""
     overlay = Image.new("RGBA", base.size, (0, 0, 0, int(255 * amount)))
-    blurred = base.filter(ImageFilter.GaussianBlur(radius=2))
+    blurred = (
+        base.filter(ImageFilter.GaussianBlur(radius=blur_radius))
+        if blur_radius > 0
+        else base
+    )
     out = Image.alpha_composite(blurred.convert("RGBA"), overlay)
     return out.convert("RGB")
 
@@ -323,13 +334,13 @@ def render_text_slide(
     - Primary and secondary are **stacked and vertically centered** (with light top/bottom padding).
     - Horizontal width respects reel-safe wrapping + side inset.
     - ``location_pin``: map pin before the first primary line (destination titles).
-    - ``budgetwing.com`` is accent-colored and underlined.
+    - ``budgetwing.com`` is accent-colored and underlined in body copy; the footer brand sits **below** the caption.
     """
     size = size or config.CAROUSEL_SIZE
     tw, th = size
     im = Image.open(image_path).convert("RGB")
     im = _cover_crop(im, size)
-    canvas = _darken_backdrop(im, amount=0.42)
+    canvas = _darken_backdrop(im, amount=0.13, blur_radius=0.8)
 
     draw = ImageDraw.Draw(canvas)
     inset = max(0.82, min(1.0, float(config.REEL_TEXT_SIDE_INSET_RATIO)))
@@ -420,7 +431,7 @@ def render_text_slide(
 
     shadow = (4, 4)
 
-    def draw_primary_at(y_start: int) -> None:
+    def draw_primary_at(y_start: int) -> int:
         y = y_start
         for i, ln in enumerate(p_lines):
             if not ln:
@@ -437,8 +448,9 @@ def render_text_slide(
                 location_pin=location_pin and i == 0,
             )
             y += h + line_gap_title
+        return y
 
-    def draw_secondary_at(y_start: int) -> None:
+    def draw_secondary_at(y_start: int) -> int:
         y = y_start
         for ln in s_lines:
             if not ln:
@@ -455,6 +467,7 @@ def render_text_slide(
                 location_pin=False,
             )
             y += h + line_gap_body
+        return y
 
     bias = (
         float(vertical_bias_up_ratio)
@@ -466,12 +479,15 @@ def render_text_slide(
     y = max(content_top, min(y, content_bot - total_h))
     y = max(safe_top, int(y - th * bias))
 
-    draw_primary_at(y)
+    y_after_primary = draw_primary_at(y)
     if s_lines:
         y_body = y + title_h + gap_block - line_gap_title
-        draw_secondary_at(y_body)
+        y_after_caption = draw_secondary_at(y_body)
+    else:
+        y_after_caption = y_after_primary
 
-    _draw_slide_footer_brand(draw, tw, th)
+    gap_brand = max(16, int(th * 0.014))
+    _draw_slide_footer_brand(draw, tw, th, y_top=y_after_caption + gap_brand)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Baseline JPEG (no optimize) decodes more reliably in FFmpeg image / concat paths.
