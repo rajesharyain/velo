@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import shutil
 import subprocess
 import textwrap
@@ -147,10 +148,9 @@ def _split_long_token(
 
 def _carousel_text_max_width(tw: int) -> int:
     """
-    Max line width for text drawn on a 4:5 carousel slide.
+    Max line width for text on a 9:16 carousel slide (same aspect as Reels).
 
-    Reels center-crop the same JPEG to 9:16, which removes horizontal strips; only the
-    middle ``CAROUSEL_HEIGHT / REEL_HEIGHT`` fraction of the slide width stays visible.
+    When ``CAROUSEL_SIZE`` matches ``REEL_SIZE``, the full slide width is visible in Reels.
     """
     cw, ch = config.CAROUSEL_SIZE
     rw, rh = config.REEL_SIZE
@@ -160,6 +160,143 @@ def _carousel_text_max_width(tw: int) -> int:
     visible_ratio = (ch * rw) / (rh * cw)
     inner = int(tw * visible_ratio) - 88
     return max(240, min(tw - 80, inner))
+
+
+def _draw_slide_footer_brand(
+    draw: ImageDraw.ImageDraw,
+    tw: int,
+    th: int,
+) -> None:
+    """Bottom-center domain watermark on carousel/reel source frames (readable on busy photos)."""
+    label = (config.REEL_BRAND_TEXT or "").strip()
+    if not label:
+        return
+    size = max(22, min(34, int(th * 0.018)))
+    font = _find_font(size)
+    bbox = draw.textbbox((0, 0), label, font=font)
+    bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
+    margin_bottom = max(40, int(th * 0.032))
+    x = max(8, (tw - bw) // 2)
+    y = th - margin_bottom - bh
+    y = max(8, min(y, th - bh - 8))
+    rgb = config.BRAND_DOMAIN_RGB
+    sw = max(2, min(5, th // 400))
+    draw.text(
+        (x, y),
+        label,
+        font=font,
+        fill=rgb,
+        stroke_width=sw,
+        stroke_fill=(14, 14, 18),
+    )
+
+
+def _destination_about_text(dest: dict[str, Any]) -> str:
+    """Middle-lower caption: descriptive copy + vibe + scenery (for Reels context)."""
+    cap = str(dest.get("caption", "")).strip()
+    vibe = str(dest.get("vibe", "")).strip()
+    scapes = dest.get("scape_types") or []
+    scenic = ", ".join(str(s).replace("_", " ") for s in scapes[:6] if s) if scapes else ""
+    chunks: list[str] = []
+    if cap:
+        chunks.append(cap)
+    if vibe:
+        vl = vibe.lower()
+        if not cap or vl not in cap.lower():
+            chunks.append(vibe if vibe.endswith(".") else vibe + ".")
+    if scenic:
+        chunks.append(f"Scenery: {scenic}.")
+    return " ".join(chunks).strip()
+
+
+_BRAND_RE = re.compile(r"(budgetwing\.com)", re.IGNORECASE)
+
+
+def _segment_line_brand(line: str) -> list[tuple[str, bool]]:
+    parts = _BRAND_RE.split(line)
+    out: list[tuple[str, bool]] = []
+    for p in parts:
+        if p == "":
+            continue
+        out.append((p, p.lower() == "budgetwing.com"))
+    return out if out else [(line, False)]
+
+
+def _rich_segments_width(
+    draw: ImageDraw.ImageDraw,
+    parts: list[tuple[str, bool]],
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+) -> int:
+    w = 0
+    for text, _ in parts:
+        if not text:
+            continue
+        b = draw.textbbox((0, 0), text, font=font)
+        w += b[2] - b[0]
+    return w
+
+
+def _draw_map_pin(draw: ImageDraw.ImageDraw, x_left: int, y_top: int, pin_h: int) -> int:
+    """Draw a simple location pin; returns x after pin + gap."""
+    fill = (56, 142, 240)
+    outline = (18, 40, 70)
+    w_box = max(22, pin_h - 6)
+    cx = x_left + w_box // 2
+    r = max(7, pin_h // 4)
+    cy = y_top + r + 1
+    draw.ellipse((cx - r, cy - r, cx + r, cy + r), fill=fill, outline=outline, width=1)
+    tip_y = y_top + pin_h - 1
+    spread = r + 5
+    draw.polygon(
+        [(cx, tip_y), (cx - spread, cy + r - 1), (cx + spread, cy + r - 1)],
+        fill=fill,
+        outline=outline,
+    )
+    return x_left + w_box + 14
+
+
+def _draw_brand_line_centered(
+    draw: ImageDraw.ImageDraw,
+    canvas_w: int,
+    y: int,
+    line: str,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    shadow: tuple[int, int],
+    *,
+    is_primary: bool,
+    location_pin: bool = False,
+) -> int:
+    """Centered line with optional map pin; ``budgetwing.com`` accent + underline."""
+    parts = _segment_line_brand(line)
+    default_rgb = (255, 255, 255) if is_primary else (245, 245, 245)
+    brand_rgb = config.BRAND_DOMAIN_RGB
+    text_w = _rich_segments_width(draw, parts, font)
+    ref = draw.textbbox((0, 0), line or " ", font=font)
+    line_h = ref[3] - ref[1]
+    pin_h = min(40, max(28, int(line_h * 1.2)))
+    pin_extra = 0
+    if location_pin:
+        w_box = max(22, pin_h - 6)
+        pin_extra = w_box + 14
+    total_w = pin_extra + text_w
+    x = (canvas_w - total_w) // 2
+    if location_pin:
+        y_pin = y + max(0, (line_h - pin_h) // 2)
+        x = _draw_map_pin(draw, x, y_pin, pin_h)
+    for text, is_br in parts:
+        if not text:
+            continue
+        fill = brand_rgb if is_br else default_rgb
+        for dx, dy in [(shadow[0], shadow[1]), (0, 0)]:
+            c = (0, 0, 0) if dx else fill
+            draw.text((x + dx, y + dy), text, font=font, fill=c)
+        if is_br:
+            bb = draw.textbbox((x, y), text, font=font)
+            und_y = bb[3] + 2
+            draw.line((bb[0], und_y, bb[2], und_y), fill=brand_rgb, width=max(2, line_h // 12))
+        b = draw.textbbox((0, 0), text, font=font)
+        x += b[2] - b[0]
+    return line_h
 
 
 def _darken_backdrop(base: Image.Image, amount: float = 0.45) -> Image.Image:
@@ -178,11 +315,15 @@ def render_text_slide(
     size: tuple[int, int] | None = None,
     *,
     vertical_bias_up_ratio: float | None = None,
+    location_pin: bool = False,
 ) -> Path:
     """
-    Create a JPEG with centered text over a darkened region.
-    `primary_text` is larger; `secondary_text` optional subtitle.
-    ``vertical_bias_up_ratio`` shifts the whole block upward (fraction of slide height).
+    Create a JPEG with text over the photo.
+
+    - Primary and secondary are **stacked and vertically centered** (with light top/bottom padding).
+    - Horizontal width respects reel-safe wrapping + side inset.
+    - ``location_pin``: map pin before the first primary line (destination titles).
+    - ``budgetwing.com`` is accent-colored and underlined.
     """
     size = size or config.CAROUSEL_SIZE
     tw, th = size
@@ -191,7 +332,8 @@ def render_text_slide(
     canvas = _darken_backdrop(im, amount=0.42)
 
     draw = ImageDraw.Draw(canvas)
-    max_w = _carousel_text_max_width(tw)
+    inset = max(0.82, min(1.0, float(config.REEL_TEXT_SIDE_INSET_RATIO)))
+    max_w = max(200, int(_carousel_text_max_width(tw) * inset))
 
     def wrap_lines(text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int) -> list[str]:
         if font == ImageFont.load_default():
@@ -267,49 +409,109 @@ def render_text_slide(
 
     title_h = sum(line_height(ln, title_font, line_gap_title) for ln in p_lines)
     body_h = sum(line_height(ln, body_font, line_gap_body) for ln in s_lines) if s_lines else 0
-    gap_block = 28 if s_lines else 0
-    total_h = title_h + gap_block + body_h
+    gap_block = 24 if s_lines else 0
+    # Total stack height: primary block + spacer + body (matches draw order below)
+    total_h = title_h + (gap_block - line_gap_title if s_lines else 0) + body_h
+
+    safe_top = max(8, int(th * max(0.0, min(0.2, float(config.REEL_TEXT_SAFE_TOP_RATIO)))))
+    safe_bot = max(8, int(th * max(0.0, min(0.35, float(config.REEL_TEXT_SAFE_BOTTOM_RATIO)))))
+    content_top = safe_top
+    content_bot = th - safe_bot
+
+    shadow = (4, 4)
+
+    def draw_primary_at(y_start: int) -> None:
+        y = y_start
+        for i, ln in enumerate(p_lines):
+            if not ln:
+                y += line_gap_title // 2
+                continue
+            h = _draw_brand_line_centered(
+                draw,
+                tw,
+                y,
+                ln,
+                title_font,
+                shadow,
+                is_primary=True,
+                location_pin=location_pin and i == 0,
+            )
+            y += h + line_gap_title
+
+    def draw_secondary_at(y_start: int) -> None:
+        y = y_start
+        for ln in s_lines:
+            if not ln:
+                y += line_gap_body // 2
+                continue
+            h = _draw_brand_line_centered(
+                draw,
+                tw,
+                y,
+                ln,
+                body_font,
+                shadow,
+                is_primary=False,
+                location_pin=False,
+            )
+            y += h + line_gap_body
+
     bias = (
         float(vertical_bias_up_ratio)
         if vertical_bias_up_ratio is not None
         else float(config.CAROUSEL_TEXT_BIAS_UP_RATIO)
     )
-    bias = max(0.0, min(0.28, bias))
-    y = (th - total_h) // 2 - int(th * bias)
-    y = max(24, y)
+    bias = max(0.0, min(0.2, bias))
+    y = content_top + max(0, (content_bot - content_top - total_h) // 2)
+    y = max(content_top, min(y, content_bot - total_h))
+    y = max(safe_top, int(y - th * bias))
 
-    shadow = (4, 4)
+    draw_primary_at(y)
+    if s_lines:
+        y_body = y + title_h + gap_block - line_gap_title
+        draw_secondary_at(y_body)
 
-    for ln in p_lines:
-        if not ln:
-            y += line_gap_title // 2
-            continue
-        bbox = draw.textbbox((0, 0), ln, font=title_font)
-        h = bbox[3] - bbox[1]
-        x = (tw - (bbox[2] - bbox[0])) // 2
-        for dx, dy in [(shadow[0], shadow[1]), (0, 0)]:
-            color = (0, 0, 0) if dx else (255, 255, 255)
-            draw.text((x + dx, y + dy), ln, font=title_font, fill=color)
-        y += h + line_gap_title
-
-    y += gap_block - line_gap_title if s_lines else 0
-
-    for ln in s_lines:
-        if not ln:
-            y += line_gap_body // 2
-            continue
-        bbox = draw.textbbox((0, 0), ln, font=body_font)
-        h = bbox[3] - bbox[1]
-        x = (tw - (bbox[2] - bbox[0])) // 2
-        for dx, dy in [(shadow[0], shadow[1]), (0, 0)]:
-            color = (0, 0, 0) if dx else (245, 245, 245)
-            draw.text((x + dx, y + dy), ln, font=body_font, fill=color)
-        y += h + line_gap_body
+    _draw_slide_footer_brand(draw, tw, th)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Baseline JPEG (no optimize) decodes more reliably in FFmpeg image / concat paths.
     canvas.save(out_path, "JPEG", quality=92, optimize=False, subsampling=2)
     return out_path
+
+
+def _unique_local_images_flat(groups: Sequence[Sequence[Path]]) -> list[Path]:
+    """Stable de-dupe of existing files by resolved path (one row per unique download)."""
+    out: list[Path] = []
+    seen: set[str] = set()
+    for group in groups:
+        for p in group:
+            if p.is_file():
+                k = str(p.resolve())
+                if k not in seen:
+                    seen.add(k)
+                    out.append(p)
+    return out
+
+
+def _pick_unique_image(
+    used_paths: set[str],
+    preferred: Sequence[Path],
+    pool: list[Path],
+) -> Path | None:
+    """Prefer first unused path in ``preferred``, else first unused in ``pool``."""
+    for p in preferred:
+        if p.is_file():
+            k = str(p.resolve())
+            if k not in used_paths:
+                used_paths.add(k)
+                return p
+    for p in pool:
+        if p.is_file():
+            k = str(p.resolve())
+            if k not in used_paths:
+                used_paths.add(k)
+                return p
+    return None
 
 
 def build_carousel_slides(
@@ -320,10 +522,9 @@ def build_carousel_slides(
     reel_theme: str = "",
 ) -> list[Path]:
     """
-    Build 5–10 JPEG slides (1080×1350): user theme as first title, destinations,
-    optional bonus slides, hashtag slide, fixed closing (see ``CAROUSEL_CLOSING_TEXT``).
-
-    `image_paths_by_dest_index` aligns with `content['destinations']` indices.
+    Build 5–10 JPEG slides at ``CAROUSEL_SIZE`` (9:16): theme, destinations,
+    optional bonus / hashtag / closing. **Each slide uses a unique source photo**
+    (no duplicate downloads / re-use).
     """
     hook = str(content.get("hook", ""))
     first_title = (reel_theme or "").strip() or hook
@@ -331,38 +532,68 @@ def build_carousel_slides(
     hashtag_line = " ".join(f"#{t}" for t in tags[:12]) if tags else "#travel #wanderlust"
 
     destinations: list[dict[str, Any]] = list(content.get("destinations") or [])
-    all_images: list[Path] = [p for group in image_paths_by_dest_index for p in group]
-    if not all_images:
+    pool = _unique_local_images_flat(image_paths_by_dest_index)
+    if not pool:
         raise RuntimeError("No images available for carousel.")
+    min_needed = 1 + len(destinations) + 1  # title + each destination + closing
+    if len(pool) < min_needed:
+        raise RuntimeError(
+            f"Need at least {min_needed} unique Pexels images for this run "
+            f"(title, {len(destinations)} destinations, closing); only {len(pool)} unique file(s) downloaded."
+        )
+    random.shuffle(pool)
+    used_paths: set[str] = set()
 
-    slides_spec: list[tuple[str, str | None, Path]] = []
+    def need_image(preferred: Sequence[Path]) -> Path:
+        im = _pick_unique_image(used_paths, preferred, pool)
+        if im is None:
+            raise RuntimeError(
+                "Not enough unique Pexels photos for this carousel. "
+                "Each slide needs a different image — try another theme or check API results."
+            )
+        return im
 
-    slides_spec.append((first_title, None, random.choice(all_images)))
+    def opt_image(preferred: Sequence[Path]) -> Path | None:
+        return _pick_unique_image(used_paths, preferred, pool)
+
+    slides_spec: list[tuple[str, str | None, Path, bool]] = []
+
+    slides_spec.append((first_title, None, need_image([]), False))
 
     for i, dest in enumerate(destinations):
         name = str(dest.get("destination", ""))
-        cap = str(dest.get("caption", ""))
+        about = _destination_about_text(dest) or str(dest.get("caption", "")).strip()
         imgs = list(image_paths_by_dest_index[i]) if i < len(image_paths_by_dest_index) else []
-        img = imgs[0] if imgs else random.choice(all_images)
-        slides_spec.append((name, cap, img))
+        slides_spec.append((name, about or None, need_image(imgs), True))
 
     for i, dest in enumerate(destinations):
         imgs = list(image_paths_by_dest_index[i]) if i < len(image_paths_by_dest_index) else []
-        if len(imgs) < 2:
-            continue
         if len(slides_spec) >= 9:
             break
         name = str(dest.get("destination", ""))
-        slides_spec.append((name, "Save this for later", imgs[1]))
-
-    if len(slides_spec) < 9:
-        slides_spec.append((hashtag_line, None, random.choice(all_images)))
+        about = _destination_about_text(dest)
+        hint = "Save this spot for later."
+        sec = f"{about} {hint}".strip() if about else hint
+        bonus_pref = [imgs[1]] if len(imgs) > 1 else []
+        bonus_img = opt_image(bonus_pref)
+        if bonus_img is not None:
+            slides_spec.append((name, sec, bonus_img, True))
 
     closing = (config.CAROUSEL_CLOSING_TEXT or "").strip() or hook
-    slides_spec.append((closing, None, random.choice(all_images)))
+    closing_img = need_image([])
+
+    if len(slides_spec) < 9:
+        tag_img = opt_image([])
+        if tag_img is not None:
+            slides_spec.append((hashtag_line, None, tag_img, False))
+
+    slides_spec.append((closing, None, closing_img, False))
 
     while len(slides_spec) < 5:
-        slides_spec.insert(-1, ("Discover more", None, random.choice(all_images)))
+        fill = opt_image([])
+        if fill is None:
+            break
+        slides_spec.insert(-1, ("Discover more", None, fill, False))
 
     if len(slides_spec) > 10:
         core_end = 1 + len(destinations)
@@ -370,12 +601,15 @@ def build_carousel_slides(
         tail = slides_spec[-2:]
         merged = core + tail
         while len(merged) < 5:
-            merged.insert(-1, ("Travel inspo", None, random.choice(all_images)))
+            inspo = opt_image([])
+            if inspo is None:
+                break
+            merged.insert(-1, ("Travel inspo", None, inspo, False))
         slides_spec = merged[:10]
 
     bias = max(0.0, min(0.28, float(config.CAROUSEL_TEXT_BIAS_UP_RATIO)))
     out_paths: list[Path] = []
-    for idx, (primary, secondary, img) in enumerate(slides_spec):
+    for idx, (primary, secondary, img, use_pin) in enumerate(slides_spec):
         out = work_dir / f"slide_{idx + 1:02d}.jpg"
         render_text_slide(
             img,
@@ -383,85 +617,11 @@ def build_carousel_slides(
             primary,
             secondary,
             vertical_bias_up_ratio=bias,
+            location_pin=use_pin,
         )
         out_paths.append(out)
 
     return out_paths
-
-
-def _center_text(
-    draw: ImageDraw.ImageDraw,
-    cx: float,
-    cy: float,
-    text: str,
-    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
-    fill: tuple[int, int, int] | tuple[int, int, int, int],
-) -> None:
-    bbox = draw.textbbox((0, 0), text, font=font)
-    w, h = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text((cx - w / 2, cy - h / 2), text, font=font, fill=fill)
-
-
-def _render_reel_brand_overlay_png(path: Path, brand_text: str) -> None:
-    """Semi-transparent pill with an “info” mark + label for FFmpeg overlay."""
-    font = _find_font(19)
-    font_i = _find_font(17)
-    dummy = Image.new("RGB", (4, 4))
-    dr = ImageDraw.Draw(dummy)
-    bbox = dr.textbbox((0, 0), brand_text, font=font)
-    tw = bbox[2] - bbox[0]
-    th = bbox[3] - bbox[1]
-    ih = 28
-    gap = 10
-    pad_l, pad_r, pad_v = 12, 14, 9
-    w = pad_l + ih + gap + tw + pad_r
-    h = max(ih + pad_v * 2, th + pad_v * 2 + 4)
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
-    draw.rounded_rectangle((0, 0, w, h), radius=h // 2, fill=(18, 18, 18, 218))
-    cx_i = pad_l + ih // 2
-    cy_i = h // 2
-    ri = ih // 2 - 2
-    draw.ellipse(
-        (cx_i - ri, cy_i - ri, cx_i + ri, cy_i + ri),
-        fill=(255, 255, 255, 240),
-    )
-    _center_text(draw, cx_i, cy_i, "i", font_i, (25, 25, 28))
-    draw.text((pad_l + ih + gap, (h - th) // 2 - 2), brand_text, font=font, fill=(255, 255, 255, 245))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(path, "PNG")
-
-
-def _apply_reel_brand_overlay(video_in: Path, video_out: Path, work_dir: Path, brand: str) -> None:
-    """Composite brand pill bottom-left (Instagram-style). Re-encodes video (no audio)."""
-    b = (brand or "").strip()
-    if not b:
-        shutil.copy(video_in, video_out)
-        return
-    png = work_dir / "reel_brand_overlay.png"
-    _render_reel_brand_overlay_png(png, b)
-    exe = _ensure_ffmpeg()
-    cmd = [
-        exe,
-        "-y",
-        "-i",
-        str(video_in),
-        "-i",
-        str(png),
-        "-filter_complex",
-        "[0:v][1:v]overlay=20:main_h-overlay_h-32",
-        "-c:v",
-        "libx264",
-        "-pix_fmt",
-        "yuv420p",
-        "-preset",
-        "veryfast",
-        "-crf",
-        "20",
-        "-an",
-        str(video_out),
-    ]
-    _run_ffmpeg_cmd(cmd, "reel brand overlay")
 
 
 def _mux_music(video_path: Path, music_path: Path, out: Path) -> None:
@@ -585,17 +745,24 @@ def build_reel_from_images(
     PIL decodes each file; raw RGB24 is streamed into FFmpeg **rawvideo** stdin.
     No image2/concat demuxer — avoids broken image streams on some FFmpeg builds.
     """
-    n = max(1, config.REEL_FRAME_COUNT)
+    n_target = max(1, config.REEL_FRAME_COUNT)
     raw = [Path(p) for p in image_paths if Path(p).is_file()]
     if not raw:
         raise RuntimeError("No image files supplied for reel.")
 
-    pool = list(raw)
-    chosen: list[Path] = [pool[i % len(pool)] for i in range(n)]
+    seen: set[str] = set()
+    pool: list[Path] = []
+    for p in raw:
+        k = str(p.resolve())
+        if k not in seen:
+            seen.add(k)
+            pool.append(p)
+    c = min(n_target, len(pool))
+    chosen = pool[:c]
 
     w, h = config.REEL_SIZE
     total = max(5.0, min(30.0, config.REEL_TOTAL_SECONDS))
-    per = total / n
+    per = total / c
 
     stills_rgb: list[bytes] = []
     for src in chosen:
@@ -608,12 +775,10 @@ def build_reel_from_images(
     no_audio = work_dir / "reel_noaudio.mp4"
     _encode_reel_rawvideo_to_mp4(stills_rgb, per, no_audio, "reel rawvideo stdin")
 
-    branded = work_dir / "reel_branded_noaudio.mp4"
-    _apply_reel_brand_overlay(no_audio, branded, work_dir, config.REEL_BRAND_TEXT)
-
+    # Brand is burned bottom-center on each carousel JPEG (reel frames); avoid a second FFmpeg pill.
     if music_path is not None and music_path.is_file():
-        _mux_music(branded, music_path, out_mp4)
+        _mux_music(no_audio, music_path, out_mp4)
     else:
-        shutil.copy(branded, out_mp4)
+        shutil.copy(no_audio, out_mp4)
 
     return out_mp4

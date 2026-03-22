@@ -26,7 +26,7 @@ Rules:
     beach, coastline, ocean, tropical, island, mountains, alpine, volcano, forest, jungle, lake, river, waterfall, desert, canyon, countryside, vineyard, rice_terraces, savanna, glacier, city, skyline, historic_town, old_town, architecture, street_cafe, night_market, temple, castle, landmark, scenic_view, hiking_trail, road_trip, winter_snow, spring_bloom, sunset_view
   - vibe: one short phrase (max 18 words) describing mood and atmosphere (romantic, adventurous, laid-back, luxury, backpacker, family-friendly, etc.).
   - pexels_search_query: ONE line optimized for stock-photo search (English). Combine the place name PLUS concrete visual keywords from scape_types and vibe (e.g. "Santorini Greece white buildings blue dome sunset caldera", "Banff Canada turquoise lake mountain reflection"). No hashtags. 6 to 14 words ideal. This string is sent to Pexels before any carousel is built — make it specific to landscapes and scenery, not generic "travel".
-- caption: max 12 words, punchy, Instagram-friendly, no hashtags.
+  - caption: 20 to 40 words. Describe the destination for travelers: what it feels like, what you see and do, scenery and atmosphere. Informative and specific (not generic "amazing place"). No hashtags.
 - hook: max 8 words, title for slide 1 (can nod to the theme’s scenery type).
 - cta: max 10 words, final slide.
 - hashtags: 8 to 12 tags WITHOUT the # symbol in JSON.
@@ -89,8 +89,8 @@ def _dedupe_destinations(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         seen.add(key)
         cap = str(row.get("caption", "")).strip()
         words = cap.split()
-        if len(words) > 12:
-            cap = " ".join(words[:12])
+        if len(words) > 48:
+            cap = " ".join(words[:48])
         scape = _norm_scape_types(row.get("scape_types"))
         vibe = str(row.get("vibe", "")).strip()[:220]
         pq = str(row.get("pexels_search_query", "")).strip()[:300]
@@ -161,7 +161,7 @@ def generate_travel_content(theme: str, api_key: str | None = None) -> dict[str,
             {"role": "user", "content": user_msg},
         ],
         temperature=0.85,
-        max_tokens=1536,
+        max_tokens=2048,
         response_format={"type": "json_object"},
     )
 

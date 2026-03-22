@@ -167,7 +167,11 @@ async def api_generate(body: GenerateBody) -> JSONResponse:
         raise HTTPException(status_code=400, detail="Theme is required.")
 
     try:
-        summary = await asyncio.to_thread(pipeline.run_pipeline, theme)
+        summary = await asyncio.to_thread(
+            pipeline.run_pipeline,
+            theme,
+            body.music_track_id,
+        )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     except RuntimeError as e:

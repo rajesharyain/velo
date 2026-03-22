@@ -24,18 +24,23 @@ logger = logging.getLogger(__name__)
 
 def _reel_carousel_slide_paths(slide_paths: list[Path], count: int) -> list[Path]:
     """
-    Use the rendered carousel JPEGs (with captions) for the reel.
+    Use rendered carousel JPEGs for the reel — **unique files only**, no cycling duplicates.
 
-    Takes the first ``count`` slides in order (slide_01 …). If there are fewer
-    slides than ``count``, repeats slides cyclically to fill.
+    If there are fewer slides than ``count``, the reel uses that many distinct frames
+    (each gets a longer share of ``REEL_TOTAL_SECONDS``).
     """
     pool = [p for p in slide_paths if p.is_file()]
     if not pool:
         raise RuntimeError("No carousel slide files exist for reel.")
-    c = max(1, count)
-    if len(pool) >= c:
-        return pool[:c]
-    return [pool[i % len(pool)] for i in range(c)]
+    seen: set[str] = set()
+    uniq: list[Path] = []
+    for p in pool:
+        k = str(p.resolve())
+        if k not in seen:
+            seen.add(k)
+            uniq.append(p)
+    c = max(1, min(count, len(uniq)))
+    return uniq[:c]
 
 
 def _normalize_music_selection(music_track_id: str | None) -> str | None:
@@ -82,6 +87,7 @@ def run_pipeline(theme: str, music_track_id: str | None = None) -> dict[str, Any
 
     bundles: list[pexels_service.PexelsMediaBundle] = []
     image_paths_by_dest: list[list[Path]] = []
+    used_pexels_urls: set[str] = set()
 
     with httpx.Client(timeout=120.0, follow_redirects=True) as client:
         for i, dest in enumerate(destinations):
@@ -97,18 +103,22 @@ def run_pipeline(theme: str, music_track_id: str | None = None) -> dict[str, Any
                 name,
                 include_video=False,
                 pexels_search_query=pq or None,
+                exclude_image_urls=used_pexels_urls,
             )
             bundles.append(b)
 
             imgs: list[Path] = []
             for j, url in enumerate(b.image_urls):
+                if url in used_pexels_urls:
+                    continue
                 ext = ".jpg"
                 low = url.lower()
                 if ".png" in low:
                     ext = ".png"
-                p = dl / f"img_{i}_{j}{ext}"
+                p = dl / f"img_{i}_{len(imgs)}{ext}"
                 try:
                     media_processor.download_binary(url, p, client=client)
+                    used_pexels_urls.add(url)
                     imgs.append(p)
                 except Exception as e:
                     logger.warning("Image download failed (%s): %s", url[:80], e)

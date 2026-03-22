@@ -29,8 +29,8 @@ OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", PROJECT_ROOT / "output")).resolve()
 CAROUSEL_DIR = OUTPUT_DIR / "carousel"
 REELS_DIR = OUTPUT_DIR / "reels"
 
-# Media preferences
-CAROUSEL_SIZE = (1080, 1350)  # 4:5 feed
+# Media preferences — carousel JPEGs (9:16, same as Reels / IG vertical feed)
+# Dimensions follow REEL_WIDTH × REEL_HEIGHT (defined just below)
 # Final carousel slide primary text (replaces on-image Groq CTA such as “Book your dream trip”)
 # Newlines become separate paragraphs (stacked lines) for long closing copy
 CAROUSEL_CLOSING_TEXT: str = (
@@ -40,13 +40,31 @@ CAROUSEL_CLOSING_TEXT: str = (
     )
     or "Explore more\nvisit budgetwing.com\nfor cheap flights."
 ).strip()
-# Move the text block up by this fraction of slide height (0–0.25) for clearer bottom area
-CAROUSEL_TEXT_BIAS_UP_RATIO: float = float(os.getenv("CAROUSEL_TEXT_BIAS_UP_RATIO", "0.1"))
+# Legacy: small upward nudge when a slide has primary text only (0 = off)
+CAROUSEL_TEXT_BIAS_UP_RATIO: float = float(os.getenv("CAROUSEL_TEXT_BIAS_UP_RATIO", "0"))
+# Reels / IG UI safe zones on carousel JPEGs (ratios of slide height, 0–0.35)
+REEL_TEXT_SAFE_TOP_RATIO: float = float(os.getenv("REEL_TEXT_SAFE_TOP_RATIO", "0.055"))
+REEL_TEXT_SAFE_BOTTOM_RATIO: float = float(os.getenv("REEL_TEXT_SAFE_BOTTOM_RATIO", "0.20"))
+# Primary (“subject”) is vertically centered between top safe area and this y-ratio
+REEL_PRIMARY_ZONE_END_RATIO: float = float(os.getenv("REEL_PRIMARY_ZONE_END_RATIO", "0.44"))
+# Captions start in this lower band (middle-lower, not flush to bottom)
+REEL_CAPTION_ZONE_START_RATIO: float = float(os.getenv("REEL_CAPTION_ZONE_START_RATIO", "0.48"))
+# Extra horizontal inset vs reel-safe width (0.9–1.0) for right-side action icons
+REEL_TEXT_SIDE_INSET_RATIO: float = float(os.getenv("REEL_TEXT_SIDE_INSET_RATIO", "0.93"))
+# On-slide styling for brand domain (R, G, B)
+BRAND_DOMAIN_RGB: tuple[int, int, int] = (
+    int(os.getenv("BRAND_DOMAIN_R", "64")),
+    int(os.getenv("BRAND_DOMAIN_G", "196")),
+    int(os.getenv("BRAND_DOMAIN_B", "255")),
+)
+# Minimum long edge (px) when choosing Pexels photos (0 = no filter; try 1400+ for stricter HQ)
+PEXELS_MIN_PHOTO_EDGE: int = max(0, int(os.getenv("PEXELS_MIN_PHOTO_EDGE", "0")))
 # Reels: portrait 9:16 (Instagram Reels). Override with REEL_WIDTH × REEL_HEIGHT if needed.
 _REEL_W = max(360, int(os.getenv("REEL_WIDTH", "1080")))
 _REEL_H = max(640, int(os.getenv("REEL_HEIGHT", "1920")))
 REEL_SIZE = (_REEL_W, _REEL_H)
-# Burned into the exported reel MP4 (pill with “i” + text). Empty to disable.
+CAROUSEL_SIZE = REEL_SIZE
+# Bottom-center watermark on every carousel JPEG (and thus each reel still). Empty to disable.
 REEL_BRAND_TEXT: str = (os.getenv("REEL_BRAND_TEXT", "budgetwing.com") or "").strip()
 DESTINATION_COUNT_MIN = 3
 DESTINATION_COUNT_MAX = 5

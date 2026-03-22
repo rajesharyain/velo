@@ -33,22 +33,58 @@ def _auth_headers(api_key: str) -> dict[str, str]:
     return {"Authorization": api_key}
 
 
-def _pick_image_urls(photos: list[dict[str, Any]], count: int) -> list[str]:
-    """Prefer large portrait-friendly sources; randomize order then take `count`."""
-    candidates: list[str] = []
+def _best_photo_src_url(p: dict[str, Any]) -> str | None:
+    """Prefer highest-resolution JPEG URL from Pexels ``src`` (original > large2x > portrait > large)."""
+    src = p.get("src") or {}
+    for key in ("original", "large2x", "portrait", "large", "medium"):
+        u = src.get(key)
+        if u:
+            return str(u)
+    return None
+
+
+def _pick_image_urls(
+    photos: list[dict[str, Any]],
+    count: int,
+    exclude_urls: set[str] | None = None,
+) -> list[str]:
+    """Prefer highest-megapixel photos; skip ``exclude_urls``; unique URLs only."""
+    exclude = exclude_urls or set()
+    min_edge = int(getattr(config, "PEXELS_MIN_PHOTO_EDGE", 0) or 0)
+
+    scored: list[tuple[int, str]] = []
     for p in photos:
-        src = p.get("src") or {}
-        # Prefer largest available for overlays
-        url = (
-            src.get("original")
-            or src.get("large2x")
-            or src.get("large")
-            or src.get("medium")
-        )
-        if url:
-            candidates.append(url)
+        w = int(p.get("width") or 0)
+        h = int(p.get("height") or 0)
+        if min_edge > 0 and w > 0 and h > 0 and max(w, h) < min_edge:
+            continue
+        url = _best_photo_src_url(p)
+        if not url or url in exclude:
+            continue
+        area = max(1, w * h)
+        scored.append((area, url))
+
+    if not scored:
+        for p in photos:
+            url = _best_photo_src_url(p)
+            if url and url not in exclude:
+                w = int(p.get("width") or 0)
+                h = int(p.get("height") or 0)
+                scored.append((max(1, w * h), url))
+
+    scored.sort(key=lambda t: t[0], reverse=True)
+    candidates = [u for _, u in scored]
     random.shuffle(candidates)
-    return candidates[:count]
+    out: list[str] = []
+    seen: set[str] = set()
+    for u in candidates:
+        if u in seen or u in exclude:
+            continue
+        seen.add(u)
+        out.append(u)
+        if len(out) >= count:
+            break
+    return out
 
 
 def _best_portrait_video(videos: list[dict[str, Any]]) -> dict[str, Any] | None:
@@ -93,12 +129,14 @@ def fetch_media_for_destination(
     image_count: int | None = None,
     include_video: bool = False,
     pexels_search_query: str | None = None,
+    exclude_image_urls: set[str] | None = None,
 ) -> PexelsMediaBundle:
     """
     Search Pexels for images (portrait). Optionally fetch a vertical video.
 
     ``pexels_search_query`` should be Groq-generated (place + scenery keywords).
     If omitted, ``destination_name`` is used as the search string.
+    ``exclude_image_urls``: URLs already used in this pipeline run (no duplicate downloads).
 
     `image_count` defaults to a random value between IMAGES_PER_DESTINATION.
     When ``include_video`` is False (default), no video API call is made.
@@ -111,6 +149,8 @@ def fetch_media_for_destination(
 
     low, high = config.IMAGES_PER_DESTINATION
     n_img = image_count if image_count is not None else random.randint(low, high)
+    # Ask API for extra rows so we can skip URLs already used elsewhere in the run
+    n_pick = min(30, max(n_img + 6, n_img * 2))
     name = destination_name.strip()
     query = (pexels_search_query or "").strip() or name
 
@@ -124,7 +164,7 @@ def fetch_media_for_destination(
             headers=headers,
             params={
                 "query": query,
-                "per_page": config.PEXELS_IMAGES_PAGE_SIZE,
+                "per_page": max(config.PEXELS_IMAGES_PAGE_SIZE, 24),
                 "orientation": "portrait",
             },
         )
@@ -144,7 +184,8 @@ def fetch_media_for_destination(
             ir2.raise_for_status()
             photos = ir2.json().get("photos") or []
 
-        bundle.image_urls = _pick_image_urls(photos, n_img)
+        bundle.image_urls = _pick_image_urls(photos, n_pick, exclude_image_urls)
+        bundle.image_urls = bundle.image_urls[:n_img]
         if not bundle.image_urls and query != name:
             logger.warning(
                 "No Pexels images for scenery query; retrying with destination name only: %s",
@@ -172,7 +213,8 @@ def fetch_media_for_destination(
                 )
                 ir4.raise_for_status()
                 photos3 = ir4.json().get("photos") or []
-            bundle.image_urls = _pick_image_urls(photos3, n_img)
+            bundle.image_urls = _pick_image_urls(photos3, n_pick, exclude_image_urls)
+            bundle.image_urls = bundle.image_urls[:n_img]
             if bundle.image_urls:
                 bundle = PexelsMediaBundle(
                     destination=name,
