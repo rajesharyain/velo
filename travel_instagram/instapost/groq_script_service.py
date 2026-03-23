@@ -54,6 +54,19 @@ def _trim_hashtags(tags: list[Any]) -> list[str]:
     return out[:12]
 
 
+def _uniq_nonempty(items: list[Any], limit: int) -> list[str]:
+    out: list[str] = []
+    for it in items or []:
+        s = str(it).strip()
+        if not s:
+            continue
+        if s not in out:
+            out.append(s)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def generate_scripts(destination_query: str, variations: int = 1, api_key: str | None = None) -> list[dict[str, Any]]:
     """
     Generate InstaPost reel scripts.
@@ -181,4 +194,65 @@ Return JSON only with this EXACT shape:
     if not out:
         raise RuntimeError("Groq returned no usable scripts.")
     return out
+
+
+def generate_destination_vibes(destination_query: str, api_key: str | None = None) -> dict[str, list[str]]:
+    """
+    Extract place names and vibe lines from user topic.
+
+    Returns:
+      {"places": [...], "vibe_lines": [...]}
+    """
+    key = api_key or config.GROQ_API_KEY
+    if not key:
+        raise RuntimeError("GROQ_API_KEY is not set. Add it to your environment or .env file.")
+    topic = destination_query.strip()
+    if not topic:
+        raise ValueError("destination_query must be non-empty.")
+
+    client = Groq(api_key=key)
+    user_msg = f"""Given this travel topic, identify places mentioned and write short on-screen vibe lines.
+
+Topic: {topic}
+
+Return JSON only in this exact shape:
+{{
+  "places": ["place 1", "place 2"],
+  "vibe_lines": [
+    "line for reel clip 1",
+    "line for reel clip 2",
+    "line for reel clip 3",
+    "line for reel clip 4",
+    "line for reel clip 5"
+  ]
+}}
+
+Rules:
+- places: 1 to 5 strings, proper place names only.
+- vibe_lines: 5 to 8 short lines, max 11 words each, travel blogger vibe.
+- no hashtags, no emojis, no markdown.
+"""
+
+    completion = client.chat.completions.create(
+        model=config.GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": "You output valid JSON only."},
+            {"role": "user", "content": user_msg},
+        ],
+        temperature=0.7,
+        max_tokens=700,
+        response_format={"type": "json_object"},
+    )
+    raw = completion.choices[0].message.content
+    if not raw:
+        return {"places": [topic], "vibe_lines": [topic]}
+    parsed = _extract_json_object(raw)
+    places = _uniq_nonempty(parsed.get("places") or [], limit=5)
+    vibes = _uniq_nonempty(parsed.get("vibe_lines") or [], limit=8)
+    if not places:
+        places = [topic]
+    if not vibes:
+        vibes = [f"{places[0]} looks unreal from every angle."]
+    vibes = [_trim_to_max_words(v, 11) for v in vibes]
+    return {"places": places, "vibe_lines": vibes}
 

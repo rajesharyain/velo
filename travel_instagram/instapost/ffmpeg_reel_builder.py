@@ -93,17 +93,22 @@ def _draw_line_centered_budgetwing(
     valid = [p for p in parts if p]
     if not valid:
         return
+    part_boxes: list[tuple[str, tuple[int, int, int, int], int]] = []
     widths: list[int] = []
     for p in valid:
-        w, _ = _text_bbox(draw, p, font)
+        bb = draw.textbbox((0, 0), p, font=font)
+        w = bb[2] - bb[0]
+        part_boxes.append((p, bb, w))
         widths.append(w)
     total_w = sum(widths)
     x = int(x_center - total_w / 2)
-    for p, pw in zip(valid, widths):
+    for p, bb, pw in part_boxes:
         is_brand = p.lower() == "budgetwing.com"
         fill = brand_fill if is_brand else default_fill
-        draw.text((x + 4, y + 4), p, font=font, fill=(0, 0, 0, 210))
-        draw.text((x, y), p, font=font, fill=fill)
+        dx = -bb[0]
+        dy = -bb[1]
+        draw.text((x + dx + 4, y + dy + 4), p, font=font, fill=(0, 0, 0, 210))
+        draw.text((x + dx, y + dy), p, font=font, fill=fill)
         x += pw
 
 
@@ -148,8 +153,9 @@ def _render_overlay_full_frame(
     pad_y = int(max(10, h * 0.015))
     rect = (x0 - pad_x, y0 - pad_y, x0 + block_w + pad_x, y0 + block_h + pad_y)
 
-    # Semi-transparent contrast box.
-    draw.rounded_rectangle(rect, radius=int(min(28, h * 0.03)), fill=(0, 0, 0, bg_alpha))
+    # Semi-transparent contrast box (optional).
+    if bg_alpha > 0:
+        draw.rounded_rectangle(rect, radius=int(min(28, h * 0.03)), fill=(0, 0, 0, bg_alpha))
 
     # Center text block inside the rounded background.
     rect_w = rect[2] - rect[0]
@@ -169,13 +175,16 @@ def _render_overlay_full_frame(
                 x_center=rect[0] + rect_w // 2,
                 y=cur_y,
                 default_fill=(255, 255, 255, 245),
-                brand_fill=(255, 153, 51, 248),
+                brand_fill=(255, 221, 64, 248),
             )
         else:
+            bb = draw.textbbox((0, 0), ln, font=font)
+            dx = -bb[0]
+            dy = -bb[1]
             # shadow
-            draw.text((x + shadow_off[0], cur_y + shadow_off[1]), ln, font=font, fill=(0, 0, 0, 200))
+            draw.text((x + dx + shadow_off[0], cur_y + dy + shadow_off[1]), ln, font=font, fill=(0, 0, 0, 200))
             # main
-            draw.text((x, cur_y), ln, font=font, fill=(255, 255, 255, 245))
+            draw.text((x + dx, cur_y + dy), ln, font=font, fill=(255, 255, 255, 245))
         cur_y += th + int(max(6, h * 0.006))
     img.save(out_png)
     return out_png
@@ -211,36 +220,28 @@ def _render_intro_overlay(
     block_gap_main = int(max(12, h * 0.01))
     block_gap_sub = int(max(10, h * 0.008))
 
-    entries: list[tuple[str, ImageFont.FreeTypeFont | ImageFont.ImageFont, tuple[int, int, int, int]]] = []
-    # hook accent color
-    for ln in hook_lines:
-        entries.append((ln, hook_font, (111, 186, 255, 245)))
+    blocks: list[tuple[list[str], ImageFont.FreeTypeFont | ImageFont.ImageFont, tuple[int, int, int, int], int]] = []
     if hook_lines:
-        entries.append(("", hook_font, (0, 0, 0, 0)))
-    for ln in title_lines:
-        entries.append((ln, title_font, (255, 255, 255, 248)))
+        blocks.append((hook_lines, hook_font, (111, 186, 255, 245), block_gap_main))
+    if title_lines:
+        blocks.append((title_lines, title_font, (255, 255, 255, 248), block_gap_sub))
     if cap_lines:
-        entries.append(("", cap_font, (0, 0, 0, 0)))
-    for ln in cap_lines:
-        entries.append((ln, cap_font, (236, 241, 248, 245)))
+        blocks.append((cap_lines, cap_font, (236, 241, 248, 245), 0))
 
-    rows: list[tuple[str, int, int, ImageFont.FreeTypeFont | ImageFont.ImageFont, tuple[int, int, int, int]]] = []
+    row_items: list[tuple[str, int, int, ImageFont.FreeTypeFont | ImageFont.ImageFont, tuple[int, int, int, int], bool]] = []
     block_w = 0
     block_h = 0
-    in_title = False
-    for idx, (ln, font, color) in enumerate(entries):
-        if ln == "":
-            if idx > 0 and idx < len(entries) - 1:
-                gap = block_gap_main if hook_lines and not in_title else block_gap_sub
-                block_h += gap
-                in_title = True
-            continue
-        tw, th = _text_bbox(draw, ln, font)
-        rows.append((ln, tw, th, font, color))
-        block_w = max(block_w, tw)
-        block_h += th
-        if idx < len(entries) - 1 and entries[idx + 1][0] != "":
-            block_h += line_gap
+    for bidx, (lines, font, color, block_gap_after) in enumerate(blocks):
+        for lidx, ln in enumerate(lines):
+            tw, th = _text_bbox(draw, ln, font)
+            row_items.append((ln, tw, th, font, color, False))
+            block_w = max(block_w, tw)
+            block_h += th
+            if lidx < len(lines) - 1:
+                block_h += line_gap
+        if bidx < len(blocks) - 1:
+            row_items.append(("", 0, 0, font, color, True))
+            block_h += block_gap_after
 
     pad_x = int(max(22, w * 0.03))
     pad_y = int(max(16, h * 0.018))
@@ -252,20 +253,24 @@ def _render_intro_overlay(
     rect = (x0, y0, x0 + rect_w, y0 + rect_h)
     draw.rounded_rectangle(rect, radius=int(min(30, h * 0.03)), fill=(0, 0, 0, 188))
 
-    cur_y = y0 + pad_y
-    row_idx = 0
-    for idx, (ln, font, color) in enumerate(entries):
-        if ln == "":
-            if idx > 0 and idx < len(entries) - 1:
-                cur_y += block_gap_main if (hook_lines and row_idx <= len(hook_lines)) else block_gap_sub
+    cur_y = y0 + max(0, (rect_h - block_h) // 2)
+    for idx, (ln, tw, th, font, color, is_gap) in enumerate(row_items):
+        if is_gap:
+            # Use the exact gap that was already counted into block_h.
+            if hook_lines and idx <= len(hook_lines):
+                cur_y += block_gap_main
+            else:
+                cur_y += block_gap_sub
             continue
-        _, tw, th, rfont, rcolor = rows[row_idx]
-        row_idx += 1
         x = x0 + (rect_w - tw) // 2
-        draw.text((x + 4, cur_y + 4), ln, font=rfont, fill=(0, 0, 0, 210))
-        draw.text((x, cur_y), ln, font=rfont, fill=rcolor)
+        bb = draw.textbbox((0, 0), ln, font=font)
+        dx = -bb[0]
+        dy = -bb[1]
+        draw.text((x + dx + 4, cur_y + dy + 4), ln, font=font, fill=(0, 0, 0, 210))
+        draw.text((x + dx, cur_y + dy), ln, font=font, fill=color)
         cur_y += th
-        if idx < len(entries) - 1 and entries[idx + 1][0] != "":
+        next_is_text = idx < len(row_items) - 1 and not row_items[idx + 1][5]
+        if next_is_text:
             cur_y += line_gap
 
     img.save(out_png)
@@ -290,6 +295,7 @@ def build_instapost_reel(
     title: str,
     caption: str,
     place_text: str,
+    per_clip_vibes: list[str] | None,
     cta: str,
     music_path: Path | None,
     total_duration_seconds: float | None = None,
@@ -328,8 +334,8 @@ def build_instapost_reel(
 
     # Render overlays (full-frame RGBA PNGs).
     intro_png = work_dir / "overlay_intro.png"
-    place_png = work_dir / "overlay_place.png"
     cta_png = work_dir / "overlay_cta.png"
+    vibe_pngs: list[Path] = []
 
     _render_intro_overlay(
         intro_png,
@@ -338,17 +344,24 @@ def build_instapost_reel(
         caption=caption,
         frame_size=frame_size,
     )
-    _render_overlay_full_frame(
-        place_png,
-        text=place_text,
-        frame_size=frame_size,
-        y=int(h * 0.70),
-        font_size=int(h * 0.033),
-        max_width_ratio=0.88,
-        max_lines=3,
-        bg_alpha=172,
-        highlight_budgetwing=True,
-    )
+    vibes = [str(v).strip() for v in (per_clip_vibes or []) if str(v).strip()]
+    if not vibes and place_text.strip():
+        vibes = [place_text.strip()]
+    for i in range(n):
+        vibe_text = vibes[i % len(vibes)] if vibes else ""
+        vp = work_dir / f"overlay_vibe_{i:02d}.png"
+        _render_overlay_full_frame(
+            vp,
+            text=vibe_text,
+            frame_size=frame_size,
+            y=int(h * 0.70),
+            font_size=int(h * 0.032),
+            max_width_ratio=0.88,
+            max_lines=2,
+            bg_alpha=168,
+            highlight_budgetwing=True,
+        )
+        vibe_pngs.append(vp)
     _render_overlay_full_frame(
         cta_png,
         text=cta,
@@ -357,14 +370,15 @@ def build_instapost_reel(
         font_size=int(h * 0.042),
         max_width_ratio=0.86,
         max_lines=2,
-        bg_alpha=150,
+        bg_alpha=0,
+        highlight_budgetwing=True,
     )
 
     reel_out = work_dir / "reel.mp4"
 
     # Inputs ordering:
     # 0..N-1 clips
-    # N..N+2 overlay images
+    # N.. overlays (intro, N vibe overlays, CTA)
     # optional music
     cmd: list[str] = [_ensure_ffmpeg(), "-y"]
 
@@ -377,11 +391,12 @@ def build_instapost_reel(
             cmd.extend(["-i", str(p)])
 
     intro_idx = len(segments)
-    place_idx = intro_idx + 1
-    cta_idx = intro_idx + 2
+    first_vibe_idx = intro_idx + 1
+    cta_idx = first_vibe_idx + n
 
     cmd.extend(["-loop", "1", "-i", str(intro_png)])
-    cmd.extend(["-loop", "1", "-i", str(place_png)])
+    for vp in vibe_pngs:
+        cmd.extend(["-loop", "1", "-i", str(vp)])
     cmd.extend(["-loop", "1", "-i", str(cta_png)])
 
     music_idx = None
@@ -397,9 +412,9 @@ def build_instapost_reel(
     for i in range(n):
         in_vid = f"[{i}:v]"
         out_v = f"[v{i}]"
-        # Scale + center-crop to vertical.
+        # Scale + center-crop to vertical. Keep each segment clean; xfade handles transitions.
         clip_filters.append(
-            f"""{in_vid}scale=w={w}:h={h}:force_original_aspect_ratio=increase,crop=w={w}:h={h}:x=(in_w-out_w)/2:y=(in_h-out_h)/2,setsar=1,format=yuv420p,fps=30,trim=duration={seg_dur:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0:d={fade_dur:.3f},fade=t=out:st={(seg_dur - fade_dur):.3f}:d={fade_dur:.3f} {out_v}"""
+            f"""{in_vid}scale=w={w}:h={h}:force_original_aspect_ratio=increase,crop=w={w}:h={h}:x=(in_w-out_w)/2:y=(in_h-out_h)/2,setsar=1,format=yuv420p,fps=30,trim=duration={seg_dur:.3f},setpts=PTS-STARTPTS {out_v}"""
         )
         v_labels.append(out_v)
 
@@ -431,25 +446,42 @@ def build_instapost_reel(
     base_video_label = current
 
     intro_in = f"[{intro_idx}:v]"
-    place_in = f"[{place_idx}:v]"
     cta_in = f"[{cta_idx}:v]"
 
     filter_parts = []
     filter_parts.extend(clip_filters)
     filter_parts.extend(transition_lines)
 
-    filter_parts.append(
-        f"{intro_in}format=rgba[intro];{place_in}format=rgba[place];{cta_in}format=rgba[cta]"
-    )
+    segment_starts: list[float] = [0.0]
+    for _ in range(1, n):
+        segment_starts.append(segment_starts[-1] + seg_dur - xfade_dur)
+    active_vibe_indices: list[int] = []
+    for i in range(n):
+        st = max(title_window_end, segment_starts[i] + 0.08)
+        en = min(cta_start - 0.08, segment_starts[i] + seg_dur - 0.06)
+        if en > st:
+            active_vibe_indices.append(i)
+
+    format_labels = [f"{intro_in}format=rgba[intro]"]
+    for i in active_vibe_indices:
+        format_labels.append(f"[{first_vibe_idx + i}:v]format=rgba[vibe{i}]")
+    format_labels.append(f"{cta_in}format=rgba[cta]")
+    filter_parts.append(";".join(format_labels))
 
     filter_parts.append(
         f"""{base_video_label}[intro]overlay=x=0:y=0:enable='between(t,0,{title_window_end:.3f})'[v0]"""
     )
+    current_label = "[v0]"
+    for i in active_vibe_indices:
+        st = max(title_window_end, segment_starts[i] + 0.08)
+        en = min(cta_start - 0.08, segment_starts[i] + seg_dur - 0.06)
+        nxt = f"[vv{i}]"
+        filter_parts.append(
+            f"""{current_label}[vibe{i}]overlay=x=0:y=0:enable='between(t,{st:.3f},{en:.3f})'{nxt}"""
+        )
+        current_label = nxt
     filter_parts.append(
-        f"""[v0][place]overlay=x=0:y=0:enable='between(t,{title_window_end:.3f},{cta_start:.3f})'[v2]"""
-    )
-    filter_parts.append(
-        f"""[v2][cta]overlay=x=0:y=0:enable='between(t,{cta_start:.3f},{total_duration_seconds:.3f})'[vout]"""
+        f"""{current_label}[cta]overlay=x=0:y=0:enable='between(t,{cta_start:.3f},{total_duration_seconds:.3f})'[vout]"""
     )
 
     cmd.extend(["-filter_complex", ";".join(filter_parts)])

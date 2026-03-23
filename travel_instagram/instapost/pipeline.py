@@ -117,6 +117,9 @@ async def generate_instapost(
     scripts = await asyncio.to_thread(groq_script_service.generate_scripts, dest, variations)
     if not scripts:
         raise RuntimeError("Groq returned no scripts.")
+    vibe_pack = await asyncio.to_thread(groq_script_service.generate_destination_vibes, dest)
+    vibe_places = list(vibe_pack.get("places") or [])
+    vibe_lines = list(vibe_pack.get("vibe_lines") or [])
 
     pexels_query = _build_pexels_query(dest, scripts[0].get("visual") or None)
     video_count = 4
@@ -167,8 +170,9 @@ async def generate_instapost(
             hook=sc.get("hook") or "",
             title=sc.get("title") or sc.get("hook") or "",
             caption=sc.get("caption") or sc.get("value") or "",
-            place_text="For visiting this place cheap visit budgetwing.com",
-            cta=sc.get("cta") or "",
+            place_text=f"For visiting {dest} cheap visit budgetwing.com",
+            per_clip_vibes=vibe_lines,
+            cta="Save more at budgetwing.com",
             music_path=music_path,
             total_duration_seconds=None,
         )
@@ -180,6 +184,8 @@ async def generate_instapost(
                 "reel_mp4_path": str(reel_mp4),
                 "reel_url": reel_url,
                 "script": sc,
+                "vibe_places": vibe_places,
+                "vibe_lines": vibe_lines,
                 "captions_json_url": captions_url,
             }
         )
