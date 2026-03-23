@@ -20,17 +20,31 @@ from travel_instagram import config
 
 logger = logging.getLogger(__name__)
 
-# Cross-platform: try common fonts; fallback to default bitmap font.
-_FONT_CANDIDATES = [
+# Cross-platform: title = boldest first; body = semibold/regular for clearer hierarchy.
+_TITLE_FONT_CANDIDATES = [
     r"C:\Windows\Fonts\segoeuib.ttf",
     r"C:\Windows\Fonts\arialbd.ttf",
+    r"C:\Windows\Fonts\seguisb.ttf",
     "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
     "/System/Library/Fonts/Supplemental/Arial Bold.ttf",
 ]
+_BODY_CORE = [
+    r"C:\Windows\Fonts\seguisb.ttf",
+    r"C:\Windows\Fonts\segoeui.ttf",
+    r"C:\Windows\Fonts\arial.ttf",
+    "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    "/System/Library/Fonts/Supplemental/Arial.ttf",
+]
+_BODY_FONT_CANDIDATES = _BODY_CORE + [p for p in _TITLE_FONT_CANDIDATES if p not in _BODY_CORE]
 
 
 def _find_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for path in _FONT_CANDIDATES:
+    """Legacy: prefer bold (same as title)."""
+    return _find_title_font(size)
+
+
+def _find_title_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for path in _TITLE_FONT_CANDIDATES:
         p = Path(path)
         if p.is_file():
             try:
@@ -38,6 +52,50 @@ def _find_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
             except OSError:
                 continue
     return ImageFont.load_default()
+
+
+def _find_body_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+    for path in _BODY_FONT_CANDIDATES:
+        p = Path(path)
+        if p.is_file():
+            try:
+                return ImageFont.truetype(str(p), size=size)
+            except OSError:
+                continue
+    return ImageFont.load_default()
+
+
+def _typography_scale(th: int, ref: int = 1920) -> float:
+    """Clamp scale so exports stay readable on short/tall canvases."""
+    return max(0.88, min(1.22, th / float(ref)))
+
+
+def _scaled_title_sizes(th: int) -> list[int]:
+    """~25% larger than previous ladder at 1920; scales with slide height."""
+    s = _typography_scale(th) * 1.26
+    bases = [48, 42, 36, 32, 28, 24]
+    out = [max(22, int(round(b * s))) for b in bases]
+    for i in range(1, len(out)):
+        if out[i] >= out[i - 1]:
+            out[i] = out[i - 1] - 2
+    return out
+
+
+def _scaled_body_sizes(th: int) -> list[int]:
+    """~12% larger than previous ladder at 1920; scales with slide height."""
+    s = _typography_scale(th) * 1.12
+    bases = [32, 28, 26, 24]
+    out = [max(18, int(round(b * s))) for b in bases]
+    for i in range(1, len(out)):
+        if out[i] >= out[i - 1]:
+            out[i] = out[i - 1] - 2
+    return out
+
+
+def _slide_already_shows_brand_url(primary: str, secondary: str | None) -> bool:
+    """True if primary/caption already contains the site (skip duplicate footer line)."""
+    blob = f"{primary}\n{secondary or ''}".lower()
+    return "budgetwing.com" in blob
 
 
 def _ensure_ffmpeg() -> str:
@@ -173,9 +231,9 @@ def _draw_slide_footer_brand(
     label = (config.REEL_BRAND_TEXT or "").strip()
     if not label:
         return
-    base_px = max(22, min(34, int(th * 0.018)))
+    base_px = max(24, min(40, int(th * 0.021)))
     size = base_px + 1
-    font = _find_font(size)
+    font = _find_body_font(size)
     bbox = draw.textbbox((0, 0), label, font=font)
     bw, bh = bbox[2] - bbox[0], bbox[3] - bbox[1]
     x = max(8, (tw - bw) // 2)
@@ -285,12 +343,18 @@ def _draw_brand_line_centered(
     if location_pin:
         y_pin = y + max(0, (line_h - pin_h) // 2)
         x = _draw_map_pin(draw, x, y_pin, pin_h)
+    if is_primary:
+        sx, sy = shadow[0], shadow[1]
+        shadow_passes: list[tuple[int, int]] = [(sx, sy), (max(1, sx // 2), max(1, sy // 2)), (0, 0)]
+    else:
+        shadow_passes = [(shadow[0], shadow[1]), (0, 0)]
+
     for text, is_br in parts:
         if not text:
             continue
         fill = brand_rgb if is_br else default_rgb
-        for dx, dy in [(shadow[0], shadow[1]), (0, 0)]:
-            c = (0, 0, 0) if dx else fill
+        for dx, dy in shadow_passes:
+            c = (0, 0, 0) if (dx, dy) != (0, 0) else fill
             draw.text((x + dx, y + dy), text, font=font, fill=c)
         if is_br:
             bb = draw.textbbox((x, y), text, font=font)
@@ -334,7 +398,8 @@ def render_text_slide(
     - Primary and secondary are **stacked and vertically centered** (with light top/bottom padding).
     - Horizontal width respects reel-safe wrapping + side inset.
     - ``location_pin``: map pin before the first primary line (destination titles).
-    - ``budgetwing.com`` is accent-colored and underlined in body copy; the footer brand sits **below** the caption.
+    - ``budgetwing.com`` in body copy is accent + underline; a small footer URL sits below the caption
+      unless the slide text already includes that domain (no duplicate).
     """
     size = size or config.CAROUSEL_SIZE
     tw, th = size
@@ -345,6 +410,7 @@ def render_text_slide(
     draw = ImageDraw.Draw(canvas)
     inset = max(0.82, min(1.0, float(config.REEL_TEXT_SIDE_INSET_RATIO)))
     max_w = max(200, int(_carousel_text_max_width(tw) * inset))
+    block_pad = max(14, int(th * 0.02))
 
     def wrap_lines(text: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, max_width: int) -> list[str]:
         if font == ImageFont.load_default():
@@ -375,11 +441,11 @@ def render_text_slide(
         return lines
 
     primary = (primary_text or "").strip() or "."
-    title_sizes = [48, 42, 36, 32, 28, 24]
+    title_sizes = _scaled_title_sizes(th)
     p_lines: list[str] = []
-    title_font = _find_font(title_sizes[0])
+    title_font = _find_title_font(title_sizes[0])
     for tsize in title_sizes:
-        title_font = _find_font(tsize)
+        title_font = _find_title_font(tsize)
         p_lines = wrap_lines(primary, title_font, max_w)
         if not p_lines:
             p_lines = [primary[:80]]
@@ -392,13 +458,13 @@ def render_text_slide(
         if longest <= max_w and len([x for x in p_lines if x]) <= 7:
             break
 
-    body_sizes = [32, 28, 26, 24]
+    body_sizes = _scaled_body_sizes(th)
     s_lines: list[str] = []
-    body_font = _find_font(body_sizes[0])
+    body_font = _find_body_font(body_sizes[0])
     if secondary_text and str(secondary_text).strip():
         sec = str(secondary_text).strip()
         for bsize in body_sizes:
-            body_font = _find_font(bsize)
+            body_font = _find_body_font(bsize)
             s_lines = wrap_lines(sec, body_font, max_w)
             widths_b = [
                 draw.textbbox((0, 0), ln, font=body_font)[2]
@@ -410,8 +476,8 @@ def render_text_slide(
             if longest <= max_w and len([x for x in s_lines if x]) <= 8:
                 break
 
-    line_gap_title = 10
-    line_gap_body = 8
+    line_gap_title = max(12, int(round(12 * _typography_scale(th))))
+    line_gap_body = max(10, int(round(10 * _typography_scale(th))))
     def line_height(ln: str, font: ImageFont.FreeTypeFont | ImageFont.ImageFont, gap: int) -> int:
         if not ln:
             return gap // 2
@@ -420,16 +486,30 @@ def render_text_slide(
 
     title_h = sum(line_height(ln, title_font, line_gap_title) for ln in p_lines)
     body_h = sum(line_height(ln, body_font, line_gap_body) for ln in s_lines) if s_lines else 0
-    gap_block = 24 if s_lines else 0
-    # Total stack height: primary block + spacer + body (matches draw order below)
-    total_h = title_h + (gap_block - line_gap_title if s_lines else 0) + body_h
+    gap_block = max(32, int(th * 0.022)) if s_lines else 0
+    brand_label = (config.REEL_BRAND_TEXT or "").strip()
+    show_footer_brand = bool(brand_label) and not _slide_already_shows_brand_url(
+        primary,
+        secondary_text,
+    )
+    gap_brand = max(24, int(th * 0.022))
+    footer_bh = 0
+    if show_footer_brand:
+        fb = max(24, min(40, int(th * 0.021))) + 1
+        ff = _find_body_font(fb)
+        _bb = draw.textbbox((0, 0), brand_label, font=ff)
+        footer_bh = _bb[3] - _bb[1]
+    footer_extra = (gap_brand + footer_bh) if show_footer_brand else 0
+    # Total stack: title + (caption) + optional footer URL (used to center the full column)
+    total_h = title_h + (gap_block - line_gap_title if s_lines else 0) + body_h + footer_extra
 
     safe_top = max(8, int(th * max(0.0, min(0.2, float(config.REEL_TEXT_SAFE_TOP_RATIO)))))
     safe_bot = max(8, int(th * max(0.0, min(0.35, float(config.REEL_TEXT_SAFE_BOTTOM_RATIO)))))
-    content_top = safe_top
-    content_bot = th - safe_bot
+    content_top = safe_top + block_pad
+    content_bot = th - safe_bot - block_pad
 
-    shadow = (4, 4)
+    shadow_title = (6, 6)
+    shadow_body = (5, 5)
 
     def draw_primary_at(y_start: int) -> int:
         y = y_start
@@ -443,7 +523,7 @@ def render_text_slide(
                 y,
                 ln,
                 title_font,
-                shadow,
+                shadow_title,
                 is_primary=True,
                 location_pin=location_pin and i == 0,
             )
@@ -462,7 +542,7 @@ def render_text_slide(
                 y,
                 ln,
                 body_font,
-                shadow,
+                shadow_body,
                 is_primary=False,
                 location_pin=False,
             )
@@ -486,8 +566,8 @@ def render_text_slide(
     else:
         y_after_caption = y_after_primary
 
-    gap_brand = max(16, int(th * 0.014))
-    _draw_slide_footer_brand(draw, tw, th, y_top=y_after_caption + gap_brand)
+    if show_footer_brand:
+        _draw_slide_footer_brand(draw, tw, th, y_top=y_after_caption + gap_brand)
 
     out_path.parent.mkdir(parents=True, exist_ok=True)
     # Baseline JPEG (no optimize) decodes more reliably in FFmpeg image / concat paths.
