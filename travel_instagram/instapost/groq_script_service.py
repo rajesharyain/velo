@@ -19,6 +19,8 @@ You output ONLY valid JSON (no markdown, no code fences).
 Constraints:
 - Short sentences. Strong curiosity and emotional tone.
 - Hook must be max 10 words.
+- title must be max 7 words (clean on-screen heading).
+- caption must be max 16 words (readable subheading, like a travel blogger voice).
 - hashtags must be 8–12 tags, WITHOUT the '#' symbol.
 - visual must describe what the viewer sees (clip ideas), optimized for stock footage search.
 - value must include a deal-like value (price range or "from $" style) plus why visit.
@@ -87,6 +89,8 @@ Topic: {dest}
 
 Return JSON only with EXACT shape:
 {{
+  "title": "string",
+  "caption": "string",
   "hook": "string",
   "visual": "string",
   "value": "string",
@@ -115,6 +119,8 @@ Return JSON only with this EXACT shape:
 {{
   "scripts": [
     {{
+      "title": "string",
+      "caption": "string",
       "hook": "string",
       "visual": "string",
       "value": "string",
@@ -151,15 +157,19 @@ Return JSON only with this EXACT shape:
     for sc in scripts:
         if not isinstance(sc, dict):
             continue
+        title = _trim_to_max_words(sc.get("title") or sc.get("hook") or "", 7)
+        caption = _trim_to_max_words(sc.get("caption") or sc.get("value") or "", 16)
         hook = _trim_to_max_words(sc.get("hook") or "", 10)
         value = str(sc.get("value") or "").strip()
         visual = str(sc.get("visual") or "").strip()
         cta = _trim_to_max_words(sc.get("cta") or "", 10)
         hashtags = _trim_hashtags(sc.get("hashtags") or [])
-        if not hook or not value or not visual or not cta or not hashtags:
+        if not title or not caption or not hook or not value or not visual or not cta or not hashtags:
             continue
         out.append(
             {
+                "title": title,
+                "caption": caption,
                 "hook": hook,
                 "visual": visual,
                 "value": value,

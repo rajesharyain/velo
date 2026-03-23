@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import logging
 import random
+import re
 import subprocess
 from pathlib import Path
-from typing import Iterable
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -79,6 +79,34 @@ def _fit_lines(
     return font, lines
 
 
+def _draw_line_centered_budgetwing(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    *,
+    font: ImageFont.FreeTypeFont | ImageFont.ImageFont,
+    x_center: int,
+    y: int,
+    default_fill: tuple[int, int, int, int],
+    brand_fill: tuple[int, int, int, int],
+) -> None:
+    parts = re.split(r"(budgetwing\.com)", text, flags=re.IGNORECASE)
+    valid = [p for p in parts if p]
+    if not valid:
+        return
+    widths: list[int] = []
+    for p in valid:
+        w, _ = _text_bbox(draw, p, font)
+        widths.append(w)
+    total_w = sum(widths)
+    x = int(x_center - total_w / 2)
+    for p, pw in zip(valid, widths):
+        is_brand = p.lower() == "budgetwing.com"
+        fill = brand_fill if is_brand else default_fill
+        draw.text((x + 4, y + 4), p, font=font, fill=(0, 0, 0, 210))
+        draw.text((x, y), p, font=font, fill=fill)
+        x += pw
+
+
 def _render_overlay_full_frame(
     out_png: Path,
     *,
@@ -89,6 +117,7 @@ def _render_overlay_full_frame(
     max_width_ratio: float,
     max_lines: int,
     bg_alpha: int = 150,
+    highlight_budgetwing: bool = False,
 ) -> Path:
     w, h = frame_size
     out_png.parent.mkdir(parents=True, exist_ok=True)
@@ -122,18 +151,123 @@ def _render_overlay_full_frame(
     # Semi-transparent contrast box.
     draw.rounded_rectangle(rect, radius=int(min(28, h * 0.03)), fill=(0, 0, 0, bg_alpha))
 
-    # Shadow pass.
+    # Center text block inside the rounded background.
+    rect_w = rect[2] - rect[0]
+    rect_h = rect[3] - rect[1]
+    inner_h = block_h
+    cur_y = rect[1] + max(0, (rect_h - inner_h) // 2)
     shadow_off = (4, 4)
 
-    cur_y = y0
     for idx, ln in enumerate(lines):
         tw, th = _text_bbox(draw, ln, font)
-        x = (w - tw) // 2
-        # shadow
-        draw.text((x + shadow_off[0], cur_y + shadow_off[1]), ln, font=font, fill=(0, 0, 0, 200))
-        # main
-        draw.text((x, cur_y), ln, font=font, fill=(255, 255, 255, 245))
+        x = rect[0] + max(0, (rect_w - tw) // 2)
+        if highlight_budgetwing:
+            _draw_line_centered_budgetwing(
+                draw,
+                ln,
+                font=font,
+                x_center=rect[0] + rect_w // 2,
+                y=cur_y,
+                default_fill=(255, 255, 255, 245),
+                brand_fill=(255, 153, 51, 248),
+            )
+        else:
+            # shadow
+            draw.text((x + shadow_off[0], cur_y + shadow_off[1]), ln, font=font, fill=(0, 0, 0, 200))
+            # main
+            draw.text((x, cur_y), ln, font=font, fill=(255, 255, 255, 245))
         cur_y += th + int(max(6, h * 0.006))
+    img.save(out_png)
+    return out_png
+
+
+def _render_intro_overlay(
+    out_png: Path,
+    *,
+    hook: str,
+    title: str,
+    caption: str,
+    frame_size: tuple[int, int],
+) -> Path:
+    """Single padded overlay block: hook (top), title (main), caption (secondary)."""
+    w, h = frame_size
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    max_w = int(w * 0.84)
+    hook_font, hook_lines = _fit_lines(draw, hook, int(h * 0.028), max_w, max_lines=1)
+    title_font, title_lines = _fit_lines(draw, title, int(h * 0.043), max_w, max_lines=2)
+    cap_font, cap_lines = _fit_lines(draw, caption, int(h * 0.032), max_w, max_lines=3)
+
+    hook_lines = [ln for ln in hook_lines if ln.strip()]
+    title_lines = [ln for ln in title_lines if ln.strip()]
+    cap_lines = [ln for ln in cap_lines if ln.strip()]
+    if not title_lines and not cap_lines:
+        img.save(out_png)
+        return out_png
+
+    line_gap = int(max(8, h * 0.006))
+    block_gap_main = int(max(12, h * 0.01))
+    block_gap_sub = int(max(10, h * 0.008))
+
+    entries: list[tuple[str, ImageFont.FreeTypeFont | ImageFont.ImageFont, tuple[int, int, int, int]]] = []
+    # hook accent color
+    for ln in hook_lines:
+        entries.append((ln, hook_font, (111, 186, 255, 245)))
+    if hook_lines:
+        entries.append(("", hook_font, (0, 0, 0, 0)))
+    for ln in title_lines:
+        entries.append((ln, title_font, (255, 255, 255, 248)))
+    if cap_lines:
+        entries.append(("", cap_font, (0, 0, 0, 0)))
+    for ln in cap_lines:
+        entries.append((ln, cap_font, (236, 241, 248, 245)))
+
+    rows: list[tuple[str, int, int, ImageFont.FreeTypeFont | ImageFont.ImageFont, tuple[int, int, int, int]]] = []
+    block_w = 0
+    block_h = 0
+    in_title = False
+    for idx, (ln, font, color) in enumerate(entries):
+        if ln == "":
+            if idx > 0 and idx < len(entries) - 1:
+                gap = block_gap_main if hook_lines and not in_title else block_gap_sub
+                block_h += gap
+                in_title = True
+            continue
+        tw, th = _text_bbox(draw, ln, font)
+        rows.append((ln, tw, th, font, color))
+        block_w = max(block_w, tw)
+        block_h += th
+        if idx < len(entries) - 1 and entries[idx + 1][0] != "":
+            block_h += line_gap
+
+    pad_x = int(max(22, w * 0.03))
+    pad_y = int(max(16, h * 0.018))
+    rect_w = min(w - 40, block_w + pad_x * 2)
+    rect_h = block_h + pad_y * 2
+    x0 = (w - rect_w) // 2
+    y0 = int(h * 0.1)
+    y0 = max(10, min(y0, h - rect_h - 10))
+    rect = (x0, y0, x0 + rect_w, y0 + rect_h)
+    draw.rounded_rectangle(rect, radius=int(min(30, h * 0.03)), fill=(0, 0, 0, 188))
+
+    cur_y = y0 + pad_y
+    row_idx = 0
+    for idx, (ln, font, color) in enumerate(entries):
+        if ln == "":
+            if idx > 0 and idx < len(entries) - 1:
+                cur_y += block_gap_main if (hook_lines and row_idx <= len(hook_lines)) else block_gap_sub
+            continue
+        _, tw, th, rfont, rcolor = rows[row_idx]
+        row_idx += 1
+        x = x0 + (rect_w - tw) // 2
+        draw.text((x + 4, cur_y + 4), ln, font=rfont, fill=(0, 0, 0, 210))
+        draw.text((x, cur_y), ln, font=rfont, fill=rcolor)
+        cur_y += th
+        if idx < len(entries) - 1 and entries[idx + 1][0] != "":
+            cur_y += line_gap
+
     img.save(out_png)
     return out_png
 
@@ -153,13 +287,15 @@ def build_instapost_reel(
     work_dir: Path,
     clip_paths: list[Path],
     hook: str,
-    value: str,
+    title: str,
+    caption: str,
+    place_text: str,
     cta: str,
     music_path: Path | None,
     total_duration_seconds: float | None = None,
 ) -> Path:
     """
-    Build one Instagram-style vertical reel with hook/value/cta overlays.
+    Build one Instagram-style vertical reel with hook + title + caption intro overlay and CTA.
 
     The reel is generated in ``work_dir`` and returned as an MP4 path.
     """
@@ -171,10 +307,10 @@ def build_instapost_reel(
     work_dir.mkdir(parents=True, exist_ok=True)
 
     if total_duration_seconds is None:
-        total_duration_seconds = float(random.randint(10, 20)) + random.choice([0.0, 0.25, 0.5])
-    total_duration_seconds = max(10.0, min(20.0, float(total_duration_seconds)))
+        total_duration_seconds = float(random.randint(18, 20)) + random.choice([0.0, 0.25, 0.5])
+    total_duration_seconds = max(16.0, min(20.0, float(total_duration_seconds)))
 
-    n = max(3, len(clip_paths))
+    n = min(5, max(3, len(clip_paths)))
     # Use up to n segments: if more clips, trim; if fewer, repeat.
     if len(clip_paths) >= n:
         segments = list(clip_paths[:n])
@@ -186,36 +322,32 @@ def build_instapost_reel(
     seg_dur = total_duration_seconds / n
     fade_dur = max(0.25, min(0.6, seg_dur / 5.0))
 
-    hook_end = min(3.0, total_duration_seconds * 0.28)
+    title_window_end = min(4.8, total_duration_seconds * 0.34)
     cta_dur = min(3.0, max(2.0, total_duration_seconds * 0.18))
     cta_start = max(0.0, total_duration_seconds - cta_dur)
-    value_start = hook_end
-    value_end = cta_start
 
     # Render overlays (full-frame RGBA PNGs).
-    hook_png = work_dir / "overlay_hook.png"
-    value_png = work_dir / "overlay_value.png"
+    intro_png = work_dir / "overlay_intro.png"
+    place_png = work_dir / "overlay_place.png"
     cta_png = work_dir / "overlay_cta.png"
 
-    _render_overlay_full_frame(
-        hook_png,
-        text=hook,
+    _render_intro_overlay(
+        intro_png,
+        hook=hook,
+        title=title,
+        caption=caption,
         frame_size=frame_size,
-        y=int(h * 0.12),
-        font_size=int(h * 0.055),
-        max_width_ratio=0.86,
-        max_lines=3,
-        bg_alpha=160,
     )
     _render_overlay_full_frame(
-        value_png,
-        text=value,
+        place_png,
+        text=place_text,
         frame_size=frame_size,
-        y=int(h * 0.52),
-        font_size=int(h * 0.038),
-        max_width_ratio=0.90,
-        max_lines=4,
-        bg_alpha=150,
+        y=int(h * 0.70),
+        font_size=int(h * 0.033),
+        max_width_ratio=0.88,
+        max_lines=3,
+        bg_alpha=172,
+        highlight_budgetwing=True,
     )
     _render_overlay_full_frame(
         cta_png,
@@ -244,17 +376,17 @@ def build_instapost_reel(
         else:
             cmd.extend(["-i", str(p)])
 
-    hook_idx = len(segments)
-    value_idx = hook_idx + 1
-    cta_idx = hook_idx + 2
+    intro_idx = len(segments)
+    place_idx = intro_idx + 1
+    cta_idx = intro_idx + 2
 
-    cmd.extend(["-loop", "1", "-i", str(hook_png)])
-    cmd.extend(["-loop", "1", "-i", str(value_png)])
+    cmd.extend(["-loop", "1", "-i", str(intro_png)])
+    cmd.extend(["-loop", "1", "-i", str(place_png)])
     cmd.extend(["-loop", "1", "-i", str(cta_png)])
 
     music_idx = None
     if music_path is not None and music_path.is_file():
-        music_idx = hook_idx + 3
+        music_idx = cta_idx + 1
         cmd.extend(["-stream_loop", "-1", "-i", str(music_path)])
 
     # Build filtergraph.
@@ -271,24 +403,50 @@ def build_instapost_reel(
         )
         v_labels.append(out_v)
 
-    concat_n = n
-    concat_line = "".join(v_labels) + f"concat=n={concat_n}:v=1:a=0[vconcat]"
+    transition_types = [
+        "fade",
+        "slideleft",
+        "slideright",
+        "slideup",
+        "slidedown",
+        "wipeleft",
+        "wiperight",
+    ]
+    xfade_dur = max(0.22, min(0.55, seg_dur * 0.22))
 
-    hook_in = f"[{hook_idx}:v]"
-    value_in = f"[{value_idx}:v]"
+    transition_lines: list[str] = []
+    current = v_labels[0]
+    current_duration = seg_dur
+    for i in range(1, n):
+        nxt = v_labels[i]
+        out = f"[vx{i}]"
+        tr = random.choice(transition_types)
+        offset = max(0.01, current_duration - xfade_dur)
+        transition_lines.append(
+            f"{current}{nxt}xfade=transition={tr}:duration={xfade_dur:.3f}:offset={offset:.3f}{out}"
+        )
+        current = out
+        current_duration = current_duration + seg_dur - xfade_dur
+
+    base_video_label = current
+
+    intro_in = f"[{intro_idx}:v]"
+    place_in = f"[{place_idx}:v]"
     cta_in = f"[{cta_idx}:v]"
 
     filter_parts = []
     filter_parts.extend(clip_filters)
-    filter_parts.append(concat_line)
-
-    filter_parts.append(f"{hook_in}format=rgba[hook];{value_in}format=rgba[value];{cta_in}format=rgba[cta]")
+    filter_parts.extend(transition_lines)
 
     filter_parts.append(
-        f"""[vconcat][hook]overlay=x=0:y=0:enable='between(t,0,{hook_end:.3f})'[v1]"""
+        f"{intro_in}format=rgba[intro];{place_in}format=rgba[place];{cta_in}format=rgba[cta]"
+    )
+
+    filter_parts.append(
+        f"""{base_video_label}[intro]overlay=x=0:y=0:enable='between(t,0,{title_window_end:.3f})'[v0]"""
     )
     filter_parts.append(
-        f"""[v1][value]overlay=x=0:y=0:enable='between(t,{value_start:.3f},{value_end:.3f})'[v2]"""
+        f"""[v0][place]overlay=x=0:y=0:enable='between(t,{title_window_end:.3f},{cta_start:.3f})'[v2]"""
     )
     filter_parts.append(
         f"""[v2][cta]overlay=x=0:y=0:enable='between(t,{cta_start:.3f},{total_duration_seconds:.3f})'[vout]"""
