@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --surface: #1a2332;
+      --border: #2d3a4d;
+      --text: #e7ecf3;
+      --muted: #8b9cb3;
+      --accent: #3d9cf5;
+      --accent-dim: #2563a8;
+      --danger: #f87171;
+      --radius: 10px;
+      --font: "Segoe UI", system-ui, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: var(--font);
+      background: radial-gradient(ellipse 120% 80% at 50% -20%, #1e3a5f 0%, var(--bg) 55%);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    h1 {
+      font-size: 1.65rem;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      margin: 0 0 0.35rem;
+    }
+    .sub {
+      color: var(--muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.75rem;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.4rem;
+    }
+    textarea, input[type="text"], select {
+      width: 100%;
+      padding: 0.85rem 1rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: var(--surface);
+      color: var(--text);
+      font-family: inherit;
+      font-size: 1rem;
+    }
+    textarea:focus, input[type="text"]:focus, select:focus {
+      outline: none;
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(61, 156, 245, 0.2);
+    }
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      align-items: center;
+      margin-top: 1rem;
+    }
+    button {
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      padding: 0.65rem 1.35rem;
+      border-radius: var(--radius);
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(180deg, var(--accent) 0%, var(--accent-dim) 100%);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(61, 156, 245, 0.35);
+    }
+    button:hover:not(:disabled) { filter: brightness(1.08); }
+    button:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+    .hint {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+    .panel {
+      margin-top: 1.5rem;
+      padding: 1.25rem 1.35rem;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      display: none;
+    }
+    .panel.visible { display: block; }
+    .error {
+      color: var(--danger);
+      margin-top: 0.75rem;
+    }
+    .grid-results {
+      margin-top: 1rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+      gap: 1rem;
+    }
+    .card {
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      background: rgba(26, 35, 50, 0.65);
+      padding: 0.9rem;
+    }
+    video {
+      width: 100%;
+      border-radius: calc(var(--radius) - 2px);
+      background: #000;
+    }
+    .script-meta {
+      margin-top: 0.75rem;
+      font-size: 0.92rem;
+      color: var(--muted);
+    }
+    .script-meta strong { color: var(--text); font-weight: 700; }
+    .tags {
+      margin-top: 0.5rem;
+      color: var(--text);
+      font-size: 0.82rem;
+      opacity: 0.9;
+      word-break: break-word;
+    }
+    .links {
+      margin-top: 0.7rem;
+      display: flex;
+      gap: 0.75rem;
+      flex-wrap: wrap;
+    }
+    a.smalllink { color: var(--accent); text-decoration: none; font-weight: 600; }
+    a.smalllink:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    {% include "_nav.html" %}
+    <h1>InstaPost</h1>
+    <p class="sub">Generate viral Instagram REELS for travel deals (Groq + Pexels + FFmpeg).</p>
+
+    <form id="form" action="#" method="post">
+      <label for="destination">Country / destination / “cheap deal”</label>
+      <input id="destination" type="text" name="destination_query" placeholder="e.g. Bali luxury deal, Rome cheap weekend" required />
+
+      <label for="variations" style="margin-top:1rem;">Generate variations</label>
+      <select id="variations" name="variations" aria-label="Generate variations">
+        <option value="1">1 variation</option>
+        <option value="5">5 variations</option>
+      </select>
+
+      <label for="music-track" style="margin-top:1rem;">Background music (optional)</label>
+      <select id="music-track" name="music_track_id" aria-label="Background music">
+        <option value="__auto__">Automatic (.env REEL_MUSIC_PATH or first file in music/)</option>
+        <option value="__none__">No background music</option>
+      </select>
+      <p class="hint" style="margin-top:0.35rem;">Add MP3/M4A/WAV files under the project <code>music/</code> folder.</p>
+
+      <div class="row">
+        <button type="submit" id="submit">Generate InstaPost REELS</button>
+        <span class="hint">Requires <code>GROQ_API_KEY</code>, <code>PEXELS_API_KEY</code>, and FFmpeg on the server.</span>
+      </div>
+    </form>
+
+    <p class="hint" id="status" hidden></p>
+
+    <div class="panel" id="error-panel">
+      <h2 style="margin:0;">Something went wrong</h2>
+      <p class="error" id="error-msg"></p>
+    </div>
+
+    <div class="panel" id="result-panel">
+      <h2 style="margin:0;">Done</h2>
+      <div id="result-meta" class="script-meta" style="margin-top:0.5rem;"></div>
+      <div id="result-grid" class="grid-results"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("form");
+    const destinationEl = document.getElementById("destination");
+    const variationsEl = document.getElementById("variations");
+    const musicSelect = document.getElementById("music-track");
+
+    const statusEl = document.getElementById("status");
+    const errorPanel = document.getElementById("error-panel");
+    const errorMsg = document.getElementById("error-msg");
+    const resultPanel = document.getElementById("result-panel");
+    const resultGrid = document.getElementById("result-grid");
+    const resultMeta = document.getElementById("result-meta");
+    const submitBtn = document.getElementById("submit");
+
+    async function loadMusicTracks() {
+      try {
+        const res = await fetch("/api/music-tracks");
+        if (!res.ok) return;
+        const data = await res.json();
+        const tracks = data.tracks || [];
+        const keep = Array.from(musicSelect.querySelectorAll("option"));
+        musicSelect.innerHTML = "";
+        keep.forEach((o) => musicSelect.appendChild(o));
+
+        tracks.forEach((t) => {
+          const o = document.createElement("option");
+          o.value = t.id;
+          o.textContent = t.label || t.id;
+          musicSelect.appendChild(o);
+        });
+        if (tracks.length === 1) {
+          musicSelect.value = tracks[0].id;
+        } else {
+          musicSelect.value = "__auto__";
+        }
+      } catch (_) { /* keep static options */ }
+    }
+    loadMusicTracks();
+
+    function hidePanels() {
+      errorPanel.classList.remove("visible");
+      resultPanel.classList.remove("visible");
+    }
+
+    function showError(msg) {
+      hidePanels();
+      errorMsg.textContent = msg;
+      errorPanel.classList.add("visible");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const destination = destinationEl.value.trim();
+      if (!destination) return;
+
+      const variations = parseInt(variationsEl.value, 10);
+      const musicTrackIdRaw = musicSelect.value;
+      let musicTrackId = musicTrackIdRaw;
+      if (musicTrackIdRaw === "__auto__") musicTrackId = null;
+
+      hidePanels();
+      statusEl.hidden = false;
+      statusEl.textContent = "Generating… this may take 1–10 minutes depending on downloads.";
+      submitBtn.disabled = true;
+
+      try {
+        const res = await fetch("/instapost/api/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            destination_query: destination,
+            variations,
+            music_track_id: musicTrackId,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const detail = data.detail;
+          showError(typeof detail === "string" ? detail : (res.statusText || "Request failed"));
+          return;
+        }
+
+        resultGrid.innerHTML = "";
+        resultMeta.textContent = `Run: ${data.run_id || "—"} · Destination: ${data.destination_query || destination}`;
+
+        const reels = data.reels || [];
+        reels.forEach((r) => {
+          const card = document.createElement("div");
+          card.className = "card";
+
+          const vid = document.createElement("video");
+          vid.controls = true;
+          vid.playsInline = true;
+          const src = document.createElement("source");
+          src.src = r.reel_url;
+          src.type = "video/mp4";
+          vid.appendChild(src);
+          card.appendChild(vid);
+
+          const meta = document.createElement("div");
+          meta.className = "script-meta";
+          const sc = r.script || {};
+          meta.innerHTML = `
+            <div><strong>Hook:</strong> ${sc.hook || ""}</div>
+            <div style="margin-top:0.25rem;"><strong>Value:</strong> ${sc.value || ""}</div>
+            <div style="margin-top:0.25rem;"><strong>CTA:</strong> ${sc.cta || ""}</div>
+          `;
+          card.appendChild(meta);
+
+          const tags = document.createElement("div");
+          tags.className = "tags";
+          const ht = (sc.hashtags || []).map(t => "#" + t).join(" ");
+          tags.textContent = ht || "";
+          card.appendChild(tags);
+
+          const links = document.createElement("div");
+          links.className = "links";
+          if (r.captions_json_url) {
+            const a1 = document.createElement("a");
+            a1.className = "smalllink";
+            a1.href = r.captions_json_url;
+            a1.target = "_blank";
+            a1.rel = "noopener";
+            a1.textContent = "Download captions JSON";
+            links.appendChild(a1);
+          }
+          if (r.reel_url) {
+            const a2 = document.createElement("a");
+            a2.className = "smalllink";
+            a2.href = r.reel_url;
+            a2.target = "_blank";
+            a2.rel = "noopener";
+            a2.textContent = "Open reel MP4";
+            links.appendChild(a2);
+          }
+          card.appendChild(links);
+
+          resultGrid.appendChild(card);
+        });
+
+        resultPanel.classList.add("visible");
+      } catch (err) {
+        showError(err.message || "Network error");
+      } finally {
+        statusEl.hidden = true;
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
+

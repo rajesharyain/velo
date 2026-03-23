@@ -24,6 +24,7 @@ from starlette.templating import Jinja2Templates
 from travel_instagram import config
 from travel_instagram import pipeline
 from travel_instagram import reels_catalog
+from travel_instagram.instapost.router import router as instapost_router
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,8 @@ app.mount(
     StaticFiles(directory=str(config.OUTPUT_DIR)),
     name="media",
 )
+
+app.include_router(instapost_router)
 
 
 def _abs_path_under_output(p: str | Path) -> Path | None:
