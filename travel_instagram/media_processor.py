@@ -791,6 +791,8 @@ def _encode_reel_rawvideo_to_mp4(
         "veryfast",
         "-crf",
         "20",
+        "-movflags",
+        "+faststart",
         str(out_mp4),
     ]
     proc = subprocess.Popen(
@@ -828,6 +830,94 @@ def _encode_reel_rawvideo_to_mp4(
         )
 
 
+# Same family as InstaPost reels (ffmpeg xfade transition names).
+_REEL_XFADE_TRANSITIONS = (
+    "fade",
+    "slideleft",
+    "slideright",
+    "slideup",
+    "slidedown",
+    "wipeleft",
+    "wiperight",
+)
+
+
+def _xfade_concat_reel_segments(
+    segment_paths: Sequence[Path],
+    seg_actual: float,
+    xfade_dur: float,
+    out_duration: float,
+    out_mp4: Path,
+    *,
+    context: str,
+) -> None:
+    """
+    Chain short vertical segment MP4s with random ``xfade`` transitions (InstaPost-style).
+
+    ``seg_actual`` = real duration of each segment MP4 (frame-quantized). Do **not**
+    ``trim`` past the file length — that triggers decoder errors on some FFmpeg builds.
+    """
+    paths = [Path(p) for p in segment_paths if Path(p).is_file()]
+    n = len(paths)
+    if n == 0:
+        raise RuntimeError("No segment files for xfade concat.")
+    if n == 1:
+        shutil.copy(paths[0], out_mp4)
+        return
+
+    exe = _ensure_ffmpeg()
+    # +genpts helps short segment MP4s probe cleanly on Windows.
+    cmd: list[str] = [exe, "-y", "-fflags", "+genpts"]
+    for p in paths:
+        cmd.extend(["-i", str(p)])
+
+    clip_filters: list[str] = []
+    v_labels: list[str] = []
+    for i in range(n):
+        in_vid = f"[{i}:v]"
+        out_v = f"[rv{i}]"
+        clip_filters.append(
+            f"{in_vid}fps=30,format=yuv420p,setpts=PTS-STARTPTS{out_v}"
+        )
+        v_labels.append(out_v)
+
+    transition_lines: list[str] = []
+    current = v_labels[0]
+    current_duration = seg_actual
+    for i in range(1, n):
+        nxt = v_labels[i]
+        out = f"[rx{i}]"
+        tr = random.choice(_REEL_XFADE_TRANSITIONS)
+        offset = max(0.01, current_duration - xfade_dur)
+        transition_lines.append(
+            f"{current}{nxt}xfade=transition={tr}:duration={xfade_dur:.3f}:offset={offset:.3f}{out}"
+        )
+        current = out
+        current_duration = current_duration + seg_actual - xfade_dur
+
+    filter_complex = ";".join(clip_filters + transition_lines)
+    cmd.extend(
+        [
+            "-filter_complex",
+            filter_complex,
+            "-map",
+            current,
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-t",
+            f"{out_duration:.3f}",
+            str(out_mp4),
+        ]
+    )
+    _run_ffmpeg_cmd(cmd, context)
+
+
 def build_reel_from_images(
     work_dir: Path,
     image_paths: Sequence[Path],
@@ -838,8 +928,8 @@ def build_reel_from_images(
     """
     Combine ``REEL_FRAME_COUNT`` stills into one vertical MP4 (images only).
 
-    PIL decodes each file; raw RGB24 is streamed into FFmpeg **rawvideo** stdin.
-    No image2/concat demuxer — avoids broken image streams on some FFmpeg builds.
+    Each still is encoded via raw RGB stdin (reliable on Windows), then segments are
+    joined with random ``xfade`` transitions (same style as InstaPost reels).
     """
     n_target = max(1, config.REEL_FRAME_COUNT)
     raw = [Path(p) for p in image_paths if Path(p).is_file()]
@@ -858,7 +948,21 @@ def build_reel_from_images(
 
     w, h = config.REEL_SIZE
     total = max(5.0, min(30.0, config.REEL_TOTAL_SECONDS))
-    per = total / c
+    n = c
+    fps = 30
+    per_simple = total / float(n)
+
+    xfade_dur = 0.0
+    seg_actual = total
+    if n > 1:
+        per_est = total / n
+        xfade_dur = max(0.18, min(0.55, per_est * 0.22))
+        seg_dur = (total + (n - 1) * xfade_dur) / n
+        if xfade_dur >= seg_dur - 0.04:
+            xfade_dur = max(0.12, min(0.35, seg_dur * 0.35))
+            seg_dur = (total + (n - 1) * xfade_dur) / n
+        frames_each = max(1, int(round(seg_dur * fps)))
+        seg_actual = frames_each / float(fps)
 
     stills_rgb: list[bytes] = []
     for src in chosen:
@@ -869,12 +973,66 @@ def build_reel_from_images(
 
     work_dir.mkdir(parents=True, exist_ok=True)
     no_audio = work_dir / "reel_noaudio.mp4"
-    _encode_reel_rawvideo_to_mp4(stills_rgb, per, no_audio, "reel rawvideo stdin")
+    segment_paths: list[Path] = []
 
-    # Brand is burned bottom-center on each carousel JPEG (reel frames); avoid a second FFmpeg pill.
-    if music_path is not None and music_path.is_file():
-        _mux_music(no_audio, music_path, out_mp4)
-    else:
-        shutil.copy(no_audio, out_mp4)
+    def _mux_or_copy() -> None:
+        if music_path is not None and music_path.is_file():
+            _mux_music(no_audio, music_path, out_mp4)
+        else:
+            shutil.copy(no_audio, out_mp4)
+
+    try:
+        if n == 1:
+            _encode_reel_rawvideo_to_mp4(stills_rgb, total, no_audio, "reel single")
+            _mux_or_copy()
+        else:
+            try:
+                for i, rgb in enumerate(stills_rgb):
+                    seg_path = work_dir / f"_reel_xfade_seg_{i:02d}.mp4"
+                    _encode_reel_rawvideo_to_mp4(
+                        [rgb],
+                        seg_actual,
+                        seg_path,
+                        f"reel segment {i + 1}/{n}",
+                    )
+                    segment_paths.append(seg_path)
+
+                _xfade_concat_reel_segments(
+                    segment_paths,
+                    seg_actual,
+                    xfade_dur,
+                    total,
+                    no_audio,
+                    context="reel xfade concat",
+                )
+            except RuntimeError as e:
+                logger.warning(
+                    "Reel xfade failed (%s); falling back to single-pass rawvideo (hard cuts).",
+                    e,
+                )
+                for p in segment_paths:
+                    try:
+                        p.unlink()
+                    except OSError:
+                        pass
+                segment_paths.clear()
+                if no_audio.is_file():
+                    try:
+                        no_audio.unlink()
+                    except OSError:
+                        pass
+                _encode_reel_rawvideo_to_mp4(
+                    stills_rgb,
+                    per_simple,
+                    no_audio,
+                    "reel rawvideo fallback",
+                )
+            _mux_or_copy()
+    finally:
+        for p in segment_paths:
+            try:
+                p.unlink()
+            except OSError:
+                pass
 
     return out_mp4
