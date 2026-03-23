@@ -81,6 +81,25 @@ def _build_pexels_query(destination_query: str, visual: str | None) -> str:
     return f"{dest} {fixed}"
 
 
+def _clip_line_for_source(place: str, kind: str, idx: int) -> str:
+    p = place.strip() or "this destination"
+    if kind == "video":
+        variants = [
+            f"Scenic views from {p}",
+            f"A travel moment in {p}",
+            f"Moving through {p}",
+            f"Discovering {p} in motion",
+        ]
+    else:
+        variants = [
+            f"A snapshot from {p}",
+            f"Postcard view of {p}",
+            f"A still moment in {p}",
+            f"Beautiful frame from {p}",
+        ]
+    return variants[idx % len(variants)]
+
+
 async def generate_instapost(
     *,
     destination_query: str,
@@ -120,24 +139,68 @@ async def generate_instapost(
     vibe_pack = await asyncio.to_thread(groq_script_service.generate_destination_vibes, dest)
     vibe_places = list(vibe_pack.get("places") or [])
     vibe_lines = list(vibe_pack.get("vibe_lines") or [])
+    places_for_media = [p for p in vibe_places if str(p).strip()]
+    if not places_for_media:
+        places_for_media = [dest]
+    # Keep total request size practical while still covering multiple places.
+    places_for_media = places_for_media[:5]
 
-    pexels_query = _build_pexels_query(dest, scripts[0].get("visual") or None)
-    video_count = 4
-    image_count = 3
+    visual_hint = scripts[0].get("visual") or None
+    video_count_each = 3
+    image_count_each = 2
 
-    logger.info("InstaPost: fetching Pexels media query=%r", pexels_query)
-    bundle = await pexels_service.fetch_insta_media(
-        dest,
-        video_count=video_count,
-        image_count=image_count,
-        pexels_search_query=pexels_query,
-    )
+    fetch_tasks = []
+    for place in places_for_media:
+        q = _build_pexels_query(str(place), visual_hint)
+        logger.info("InstaPost: fetching Pexels media for place=%r query=%r", place, q)
+        fetch_tasks.append(
+            pexels_service.fetch_insta_media(
+                str(place),
+                video_count=video_count_each,
+                image_count=image_count_each,
+                pexels_search_query=q,
+            )
+        )
+    bundles = await asyncio.gather(*fetch_tasks)
 
-    if not bundle.videos and not bundle.images:
-        raise RuntimeError("No Pexels media found for this destination. Try a different query.")
+    # Merge + de-duplicate URLs, preserving first-seen order by place.
+    video_urls: list[str] = []
+    image_urls: list[str] = []
+    url_meta: dict[str, tuple[str, str]] = {}  # url -> (place, kind)
+    seen_v: set[str] = set()
+    seen_i: set[str] = set()
+    for b in bundles:
+        for v in b.videos:
+            if v.url not in seen_v:
+                seen_v.add(v.url)
+                video_urls.append(v.url)
+                url_meta[v.url] = (str(b.destination or dest), "video")
+        for u in b.images:
+            if u not in seen_i:
+                seen_i.add(u)
+                image_urls.append(u)
+                url_meta[u] = (str(b.destination or dest), "image")
 
-    video_urls = [v.url for v in bundle.videos]
-    image_urls = list(bundle.images)
+    # Fallback to a single broad query if all place-specific searches miss.
+    if not video_urls and not image_urls:
+        fallback_q = _build_pexels_query(dest, visual_hint)
+        logger.info("InstaPost: place-specific media empty, fallback query=%r", fallback_q)
+        fallback = await pexels_service.fetch_insta_media(
+            dest,
+            video_count=4,
+            image_count=3,
+            pexels_search_query=fallback_q,
+        )
+        video_urls = [v.url for v in fallback.videos]
+        image_urls = list(fallback.images)
+        url_meta = {}
+        for v in fallback.videos:
+            url_meta[v.url] = (str(fallback.destination or dest), "video")
+        for u in fallback.images:
+            url_meta[u] = (str(fallback.destination or dest), "image")
+
+    if not video_urls and not image_urls:
+        raise RuntimeError("No Pexels media found for the requested destinations. Try a different query.")
 
     local_video_paths, local_image_paths = await media_downloader.download_media_set(
         video_urls=video_urls,
@@ -151,6 +214,18 @@ async def generate_instapost(
 
     if not clip_paths:
         raise RuntimeError("Downloaded media set was empty. Please try again.")
+
+    # Clip-aligned description lines: map each downloaded local clip to the place
+    # that provided its source URL, so captions stay consistent with media origin.
+    per_clip_lines: list[str] = []
+    for i, _ in enumerate(local_video_paths):
+        url = video_urls[i] if i < len(video_urls) else ""
+        place, kind = url_meta.get(url, (dest, "video"))
+        per_clip_lines.append(_clip_line_for_source(place, kind, i))
+    for j, _ in enumerate(local_image_paths):
+        url = image_urls[j] if j < len(image_urls) else ""
+        place, kind = url_meta.get(url, (dest, "image"))
+        per_clip_lines.append(_clip_line_for_source(place, kind, j))
 
     music_path = config.resolve_reel_music(_normalize_music_selection(music_track_id))
 
@@ -171,7 +246,7 @@ async def generate_instapost(
             title=sc.get("title") or sc.get("hook") or "",
             caption=sc.get("caption") or sc.get("value") or "",
             place_text=f"For visiting {dest} cheap visit budgetwing.com",
-            per_clip_vibes=vibe_lines,
+            per_clip_vibes=per_clip_lines,
             cta="Save more at budgetwing.com",
             music_path=music_path,
             total_duration_seconds=None,
@@ -193,6 +268,7 @@ async def generate_instapost(
     out = {
         "run_id": run_id,
         "destination_query": dest,
+        "media_places_used": places_for_media,
         "generated_variations": len(reels),
         "reels": reels,
         "scripts_json_url": _to_media_url(scripts_path),

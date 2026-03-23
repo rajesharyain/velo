@@ -295,7 +295,9 @@
         }
 
         resultGrid.innerHTML = "";
-        resultMeta.textContent = `Run: ${data.run_id || "—"} · Destination: ${data.destination_query || destination}`;
+        const placesUsed = (data.media_places_used || []).filter(Boolean);
+        const placesLabel = placesUsed.length ? ` · Places: ${placesUsed.join(", ")}` : "";
+        resultMeta.textContent = `Run: ${data.run_id || "—"} · Destination: ${data.destination_query || destination}${placesLabel}`;
 
         const reels = data.reels || [];
         reels.forEach((r) => {
