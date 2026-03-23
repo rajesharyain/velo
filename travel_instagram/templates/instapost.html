@@ -120,6 +120,27 @@
       width: 100%;
       border-radius: calc(var(--radius) - 2px);
       background: #000;
+      object-fit: cover;
+    }
+    .reel-preview {
+      padding: 10px;
+      background: rgba(0, 0, 0, 0.18);
+      border-radius: calc(var(--radius) - 2px);
+    }
+    .reel-aspect {
+      width: 100%;
+      aspect-ratio: 9 / 16;
+      position: relative;
+      overflow: hidden;
+      border-radius: calc(var(--radius) - 6px);
+      background: #000;
+    }
+    .reel-aspect video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      border-radius: 0;
     }
     .script-meta {
       margin-top: 0.75rem;
@@ -278,6 +299,12 @@
           const card = document.createElement("div");
           card.className = "card";
 
+          const previewWrap = document.createElement("div");
+          previewWrap.className = "reel-preview";
+
+          const aspectWrap = document.createElement("div");
+          aspectWrap.className = "reel-aspect";
+
           const vid = document.createElement("video");
           vid.controls = true;
           vid.playsInline = true;
@@ -285,7 +312,10 @@
           src.src = r.reel_url;
           src.type = "video/mp4";
           vid.appendChild(src);
-          card.appendChild(vid);
+
+          aspectWrap.appendChild(vid);
+          previewWrap.appendChild(aspectWrap);
+          card.appendChild(previewWrap);
 
           const meta = document.createElement("div");
           meta.className = "script-meta";

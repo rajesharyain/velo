@@ -267,7 +267,7 @@ def build_instapost_reel(
         out_v = f"[v{i}]"
         # Scale + center-crop to vertical.
         clip_filters.append(
-            f"""{in_vid}scale=w={w}:h={h}:force_original_aspect_ratio=increase,crop=w={w}:h={h}:x=(in_w-out_w)/2:y=(in_h-out_h)/2,format=yuv420p,fps=30,trim=duration={seg_dur:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0:d={fade_dur:.3f},fade=t=out:st={(seg_dur - fade_dur):.3f}:d={fade_dur:.3f} {out_v}"""
+            f"""{in_vid}scale=w={w}:h={h}:force_original_aspect_ratio=increase,crop=w={w}:h={h}:x=(in_w-out_w)/2:y=(in_h-out_h)/2,setsar=1,format=yuv420p,fps=30,trim=duration={seg_dur:.3f},setpts=PTS-STARTPTS,fade=t=in:st=0:d={fade_dur:.3f},fade=t=out:st={(seg_dur - fade_dur):.3f}:d={fade_dur:.3f} {out_v}"""
         )
         v_labels.append(out_v)
 
