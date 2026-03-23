@@ -69,6 +69,14 @@ def list_reels() -> list[dict[str, Any]]:
         reel_file = Path(reel_path_str) if reel_path_str else None
         reel_exists = bool(reel_file and reel_file.is_file())
 
+        slides_raw = outputs.get("carousel_slides") or []
+        if isinstance(slides_raw, list):
+            carousel_slide_count = sum(
+                1 for s in slides_raw if Path(str(s)).is_file()
+            )
+        else:
+            carousel_slide_count = 0
+
         try:
             summary_rel = sj.resolve().relative_to(config.OUTPUT_DIR.resolve())
             summary_json_url = "/media/" + summary_rel.as_posix()
@@ -93,6 +101,7 @@ def list_reels() -> list[dict[str, Any]]:
                 "summary_json_url": summary_json_url,
                 "reel_exists": reel_exists,
                 "reel_filename": reel_file.name if reel_file else "",
+                "carousel_slide_count": carousel_slide_count,
             },
         )
 

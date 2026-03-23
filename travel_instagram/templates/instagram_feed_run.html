@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{ title }} — Feed sizes — Velo</title>
+  <style>
+    :root {
+      --ig-top: 54px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --ig-blue: #0095f6;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #000;
+      color: #f5f5f5;
+      font-family: var(--font);
+      line-height: 1.45;
+    }
+    .ig-top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: var(--ig-top);
+      padding: 0.5rem 0.75rem 0.6rem;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .site-nav { display: flex; gap: 0.35rem; }
+    .nav-link {
+      color: rgba(255, 255, 255, 0.55);
+      text-decoration: none;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+    }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active { color: #fff; background: rgba(255, 255, 255, 0.1); }
+    .ig-top-title {
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+      margin-right: auto;
+    }
+    .page {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 1rem 0.85rem 2.5rem;
+    }
+    .run-line {
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.4);
+      word-break: break-all;
+      margin: 0 0 0.35rem;
+      font-family: ui-monospace, monospace;
+    }
+    .theme-line {
+      font-size: 0.88rem;
+      color: rgba(255, 255, 255, 0.65);
+      margin: 0 0 1rem;
+    }
+    .spinner {
+      display: inline-block;
+      width: 0.85rem;
+      height: 0.85rem;
+      border: 2px solid rgba(255, 255, 255, 0.15);
+      border-top-color: var(--ig-blue);
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: -2px;
+      margin-right: 0.35rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .load-line { font-size: 0.88rem; color: rgba(255, 255, 255, 0.5); }
+    .err { color: #f87171; font-size: 0.88rem; }
+    .fmt-block {
+      margin-top: 1.35rem;
+      padding-top: 1.1rem;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    .fmt-block:first-of-type { border-top: none; padding-top: 0; margin-top: 0; }
+    .fmt-h {
+      font-size: 0.72rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: rgba(255, 255, 255, 0.45);
+      margin: 0 0 0.5rem;
+    }
+    .fmt-sub { font-size: 0.78rem; color: rgba(255, 255, 255, 0.38); margin: 0 0 0.65rem; }
+    .strip-wrap {
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      margin: 0 -4px;
+      padding: 4px;
+      scrollbar-color: rgba(255, 255, 255, 0.2) transparent;
+    }
+    .strip {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      gap: 12px;
+      padding-bottom: 4px;
+    }
+    .ig-feed-frame {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-sizing: border-box;
+      padding: 5px 0;
+      background: linear-gradient(180deg, #15151a 0%, #0c0c0f 100%);
+      border-radius: 12px;
+      box-shadow:
+        inset 0 0 0 1px rgba(255, 255, 255, 0.08),
+        0 10px 28px rgba(0, 0, 0, 0.5);
+    }
+    .ig-feed-frame img {
+      display: block;
+      max-height: min(70vw, 320px);
+      width: auto;
+      height: auto;
+      object-fit: contain;
+      border-radius: 8px;
+    }
+    .empty { color: rgba(255, 255, 255, 0.45); font-size: 0.9rem; }
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      align-items: center;
+      margin-bottom: 0.5rem;
+    }
+    .btn {
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 0.38rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+    }
+    .btn:hover { background: rgba(255, 255, 255, 0.12); }
+  </style>
+</head>
+<body>
+  <header class="ig-top">
+    {% include "_nav.html" %}
+    <span class="ig-top-title">Instagram feed sizes</span>
+  </header>
+
+  <div class="page">
+    <p class="run-line">Run: {{ run_id }}</p>
+    {% if theme %}
+    <p class="theme-line">{{ theme }}</p>
+    {% endif %}
+
+    <div class="toolbar">
+      <a class="btn" href="/reels">← Reel library</a>
+      <button type="button" class="btn" id="btn-refresh">Regenerate JPEGs</button>
+    </div>
+
+    <p id="load-status" class="load-line"><span class="spinner"></span>Loading images…</p>
+    <p id="load-err" class="err" hidden></p>
+    <div id="content-root" hidden></div>
+    <p id="empty-msg" class="empty" hidden>No carousel slide files found for this run.</p>
+  </div>
+
+  <script>
+    const runId = {{ run_id | tojson }};
+    const loadStatus = document.getElementById("load-status");
+    const loadErr = document.getElementById("load-err");
+    const root = document.getElementById("content-root");
+    const emptyMsg = document.getElementById("empty-msg");
+    const btnRefresh = document.getElementById("btn-refresh");
+
+    const ORDER = [
+      { key: "square", title: "Square — 1:1", sub: "1080 × 1080 px" },
+      { key: "portrait", title: "Portrait — 4:5", sub: "1080 × 1350 px" },
+      { key: "landscape", title: "Landscape — 1.91:1", sub: "1080 × 566 px" },
+    ];
+
+    function render(data) {
+      loadStatus.hidden = true;
+      root.hidden = false;
+      root.innerHTML = "";
+      const count = data.slide_count || 0;
+      if (!count) {
+        emptyMsg.hidden = false;
+        return;
+      }
+      emptyMsg.hidden = true;
+      ORDER.forEach((fmt) => {
+        const urls = data[fmt.key] || [];
+        const block = document.createElement("section");
+        block.className = "fmt-block";
+        const h = document.createElement("h2");
+        h.className = "fmt-h";
+        h.textContent = fmt.title;
+        block.appendChild(h);
+        const sub = document.createElement("p");
+        sub.className = "fmt-sub";
+        sub.textContent = fmt.sub + " · " + urls.length + " slide" + (urls.length === 1 ? "" : "s");
+        block.appendChild(sub);
+        const wrap = document.createElement("div");
+        wrap.className = "strip-wrap";
+        const strip = document.createElement("div");
+        strip.className = "strip";
+        urls.forEach((url) => {
+          const frame = document.createElement("div");
+          frame.className = "ig-feed-frame";
+          const img = document.createElement("img");
+          img.src = url;
+          img.alt = "";
+          img.loading = "lazy";
+          img.decoding = "async";
+          frame.appendChild(img);
+          strip.appendChild(frame);
+        });
+        wrap.appendChild(strip);
+        block.appendChild(wrap);
+        root.appendChild(block);
+      });
+    }
+
+    async function load(force) {
+      loadErr.hidden = true;
+      loadStatus.hidden = false;
+      loadStatus.innerHTML = '<span class="spinner"></span>Loading images…';
+      root.hidden = true;
+      emptyMsg.hidden = true;
+      const q = force ? "?force=true" : "";
+      try {
+        const res = await fetch(
+          "/api/reels/" + encodeURIComponent(runId) + "/instagram-carousel" + q
+        );
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(data.detail || res.statusText || "Request failed");
+        }
+        render(data);
+      } catch (e) {
+        loadStatus.hidden = true;
+        loadErr.hidden = false;
+        loadErr.textContent = e.message || "Network error";
+      }
+    }
+
+    btnRefresh.addEventListener("click", () => load(true));
+    load(false);
+  </script>
+</body>
+</html>

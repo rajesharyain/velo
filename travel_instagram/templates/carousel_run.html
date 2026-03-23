@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{ title }} — Carousel — Velo</title>
+  <style>
+    :root {
+      --ig-top: 54px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --ig-blue: #0095f6;
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #000;
+      color: #f5f5f5;
+      font-family: var(--font);
+      line-height: 1.45;
+    }
+    .ig-top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: var(--ig-top);
+      padding: 0.5rem 0.75rem 0.6rem;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .site-nav { display: flex; gap: 0.35rem; }
+    .nav-link {
+      color: rgba(255, 255, 255, 0.55);
+      text-decoration: none;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+    }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active { color: #fff; background: rgba(255, 255, 255, 0.1); }
+    .ig-top-title {
+      font-weight: 600;
+      font-size: 1rem;
+      letter-spacing: -0.02em;
+      margin-right: auto;
+    }
+    .page {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 1rem 0.85rem 2.5rem;
+    }
+    .run-line {
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.4);
+      word-break: break-all;
+      margin: 0 0 0.35rem;
+      font-family: ui-monospace, monospace;
+    }
+    .theme-line {
+      font-size: 0.88rem;
+      color: rgba(255, 255, 255, 0.65);
+      margin: 0 0 0.35rem;
+    }
+    .hint {
+      font-size: 0.78rem;
+      color: rgba(255, 255, 255, 0.4);
+      margin: 0 0 1rem;
+    }
+    .btn {
+      font-family: inherit;
+      font-size: 0.78rem;
+      padding: 0.38rem 0.75rem;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-block;
+      margin-bottom: 1rem;
+    }
+    .btn:hover { background: rgba(255, 255, 255, 0.12); }
+    .slide-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    @media (min-width: 700px) {
+      .slide-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+    }
+    .slide-cell {
+      margin: 0;
+      padding: 0;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #121214;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    }
+    .slide-cell img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .slide-cell figcaption {
+      font-size: 0.7rem;
+      color: rgba(255, 255, 255, 0.45);
+      padding: 0.45rem 0.55rem 0.55rem;
+    }
+    .empty {
+      color: rgba(255, 255, 255, 0.45);
+      font-size: 0.9rem;
+      margin-top: 0.5rem;
+    }
+  </style>
+</head>
+<body>
+  <header class="ig-top">
+    {% include "_nav.html" %}
+    <span class="ig-top-title">Carousel slides</span>
+  </header>
+
+  <div class="page">
+    <p class="run-line">Run: {{ run_id }}</p>
+    {% if theme %}
+    <p class="theme-line">{{ theme }}</p>
+    {% endif %}
+    <p class="hint">Original 9:16 carousel JPEGs from this run (same files used for the reel).</p>
+
+    <a class="btn" href="/reels">← Reel library</a>
+
+    {% if slide_count > 0 %}
+    <p class="theme-line" style="margin-bottom:0.75rem;">{{ slide_count }} slide{% if slide_count != 1 %}s{% endif %}</p>
+    <div class="slide-grid">
+      {% for url in carousel_slides_urls %}
+      <figure class="slide-cell">
+        <img src="{{ url }}" alt="Carousel slide {{ loop.index }}" loading="lazy" decoding="async" />
+        <figcaption>Slide {{ loop.index }}</figcaption>
+      </figure>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="empty">No carousel slide files found on disk for this run.</p>
+    {% endif %}
+  </div>
+</body>
+</html>

@@ -256,18 +256,6 @@
       padding: 0 1.25rem 1rem;
     }
 
-    .empty-state {
-      min-height: calc(100dvh - var(--ig-top));
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 2rem;
-      color: rgba(255, 255, 255, 0.45);
-      font-size: 0.95rem;
-    }
-    .empty-state a { color: var(--ig-blue); }
-
     /* Table view */
     .table-wrap {
       padding: 1rem;
@@ -334,10 +322,6 @@
     <p id="load-status" class="load-line"><span class="spinner"></span>Loading…</p>
     <p id="load-err" class="err" hidden></p>
 
-    <div id="empty" class="empty-state" hidden>
-      No reels yet.<br /><a href="/">Create one</a>
-    </div>
-
     <div class="ig-feed" id="feed-root" hidden></div>
     <div class="table-wrap" id="table-root" hidden>
       <table>
@@ -348,6 +332,7 @@
             <th>Theme</th>
             <th>Hashtags</th>
             <th>When</th>
+            <th>Carousel</th>
           </tr>
         </thead>
         <tbody id="table-body"></tbody>
@@ -361,7 +346,6 @@
     const btnTable = document.getElementById("btn-table");
     const loadStatus = document.getElementById("load-status");
     const loadErr = document.getElementById("load-err");
-    const empty = document.getElementById("empty");
     const feedRoot = document.getElementById("feed-root");
     const tableRoot = document.getElementById("table-root");
     const tableBody = document.getElementById("table-body");
@@ -389,16 +373,14 @@
       loadStatus.hidden = true;
       reelCount.textContent = reels.length
         ? reels.length + " reel" + (reels.length === 1 ? "" : "s")
-        : "";
+        : "No reels";
 
       if (!reels.length) {
-        empty.hidden = false;
         feedRoot.hidden = true;
         tableRoot.hidden = true;
         return;
       }
 
-      empty.hidden = true;
       feedRoot.hidden = false;
       tableRoot.hidden = false;
 
@@ -481,6 +463,15 @@
           a.textContent = "summary.json";
           meta.appendChild(a);
         }
+        if ((r.carousel_slide_count || 0) > 0) {
+          if (r.summary_json_url) {
+            meta.appendChild(document.createTextNode(" · "));
+          }
+          const aCar = document.createElement("a");
+          aCar.href = "/carousel/" + encodeURIComponent(r.run_id);
+          aCar.textContent = "Carousel images";
+          meta.appendChild(aCar);
+        }
         inner.appendChild(meta);
 
         slide.appendChild(inner);
@@ -529,6 +520,18 @@
         const tdWhen = document.createElement("td");
         tdWhen.textContent = r.generated_at || "—";
         tr.appendChild(tdWhen);
+
+        const tdCarousel = document.createElement("td");
+        if ((r.carousel_slide_count || 0) > 0) {
+          const ca = document.createElement("a");
+          ca.href = "/carousel/" + encodeURIComponent(r.run_id);
+          ca.textContent = "Open";
+          ca.style.cssText = "color:#0095f6;text-decoration:none;font-size:0.78rem;";
+          tdCarousel.appendChild(ca);
+        } else {
+          tdCarousel.textContent = "—";
+        }
+        tr.appendChild(tdCarousel);
 
         tableBody.appendChild(tr);
       });

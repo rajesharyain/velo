@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
@@ -24,6 +25,7 @@ from starlette.templating import Jinja2Templates
 from travel_instagram import config
 from travel_instagram import pipeline
 from travel_instagram import reels_catalog
+from travel_instagram.instagram_post_export import safe_carousel_run_dir
 from travel_instagram.instapost.router import router as instapost_router
 
 logger = logging.getLogger(__name__)
@@ -111,6 +113,66 @@ async def reels_page(request: Request) -> HTMLResponse:
             "request": request,
             "title": "Reel library",
             "nav_active": "reels",
+        },
+    )
+
+
+def _carousel_slides_media_urls(run_dir: Path) -> list[str]:
+    """Web URLs for existing carousel slide JPEGs under this run (original 9:16 assets)."""
+    sj = run_dir / "summary.json"
+    if not sj.is_file():
+        return []
+    try:
+        data = json.loads(sj.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    outputs = data.get("outputs") or {}
+    slides = outputs.get("carousel_slides") or []
+    if not isinstance(slides, list):
+        return []
+    urls: list[str] = []
+    for s in slides:
+        p = Path(str(s))
+        if not p.is_file():
+            continue
+        u = _to_media_url(p)
+        if u:
+            urls.append(u)
+    return urls
+
+
+@app.get("/carousel/{run_id}", response_class=HTMLResponse)
+async def carousel_run_page(request: Request, run_id: str) -> HTMLResponse:
+    """All original carousel slide images for one pipeline run."""
+    config.ensure_output_dirs()
+    try:
+        run_dir = safe_carousel_run_dir(run_id)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    if not run_dir.is_dir():
+        raise HTTPException(status_code=404, detail="Run not found.")
+    sj = run_dir / "summary.json"
+    if not sj.is_file():
+        raise HTTPException(status_code=404, detail="No summary.json for this run.")
+    try:
+        data = json.loads(sj.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=404, detail="Invalid summary.json.") from e
+    content = data.get("content") or {}
+    theme = (data.get("theme") or "").strip()
+    hook = (content.get("hook") or "").strip()
+    slides_urls = _carousel_slides_media_urls(run_dir)
+    page_title = hook or theme or "Carousel slides"
+    return templates.TemplateResponse(
+        "carousel_run.html",
+        {
+            "request": request,
+            "title": page_title,
+            "nav_active": "reels",
+            "run_id": run_id,
+            "theme": theme,
+            "carousel_slides_urls": slides_urls,
+            "slide_count": len(slides_urls),
         },
     )
 

@@ -6,6 +6,7 @@
   <title>{{ title }}</title>
   <style>
     :root {
+      --ig-top: 54px;
       --bg: #0f1419;
       --surface: #1a2332;
       --border: #2d3a4d;
@@ -163,11 +164,45 @@
     }
     a.smalllink { color: var(--accent); text-decoration: none; font-weight: 600; }
     a.smalllink:hover { text-decoration: underline; }
+    /* Same sticky nav bar as Reels / Create pages */
+    .ig-top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: var(--ig-top);
+      padding: 0.5rem 0.75rem 0.6rem;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .site-nav {
+      display: flex;
+      gap: 0.35rem;
+    }
+    .nav-link {
+      color: rgba(255, 255, 255, 0.55);
+      text-decoration: none;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+      border: none;
+    }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active {
+      color: #fff;
+      background: rgba(255, 255, 255, 0.1);
+    }
   </style>
 </head>
 <body>
-  <div class="wrap">
+  <header class="ig-top">
     {% include "_nav.html" %}
+  </header>
+  <div class="wrap">
     <h1>InstaPost</h1>
     <p class="sub">Generate viral Instagram REELS for travel deals (Groq + Pexels + FFmpeg).</p>
 
