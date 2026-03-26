@@ -205,9 +205,9 @@ def _render_intro_overlay(
     draw = ImageDraw.Draw(img)
 
     max_w = int(w * 0.84)
-    hook_font, hook_lines = _fit_lines(draw, hook, int(h * 0.028), max_w, max_lines=1)
-    title_font, title_lines = _fit_lines(draw, title, int(h * 0.043), max_w, max_lines=2)
-    cap_font, cap_lines = _fit_lines(draw, caption, int(h * 0.032), max_w, max_lines=3)
+    hook_font, hook_lines = _fit_lines(draw, hook, int(h * 0.034), max_w, max_lines=1)
+    title_font, title_lines = _fit_lines(draw, title, int(h * 0.052), max_w, max_lines=2)
+    cap_font, cap_lines = _fit_lines(draw, caption, int(h * 0.039), max_w, max_lines=3)
 
     hook_lines = [ln for ln in hook_lines if ln.strip()]
     title_lines = [ln for ln in title_lines if ln.strip()]
@@ -251,7 +251,7 @@ def _render_intro_overlay(
     y0 = int(h * 0.1)
     y0 = max(10, min(y0, h - rect_h - 10))
     rect = (x0, y0, x0 + rect_w, y0 + rect_h)
-    draw.rounded_rectangle(rect, radius=int(min(30, h * 0.03)), fill=(0, 0, 0, 188))
+    draw.rounded_rectangle(rect, radius=int(min(32, h * 0.032)), fill=(0, 0, 0, 210))
 
     cur_y = y0 + max(0, (rect_h - block_h) // 2)
     for idx, (ln, tw, th, font, color, is_gap) in enumerate(row_items):
@@ -313,8 +313,12 @@ def build_instapost_reel(
     work_dir.mkdir(parents=True, exist_ok=True)
 
     if total_duration_seconds is None:
-        total_duration_seconds = float(random.randint(18, 20)) + random.choice([0.0, 0.25, 0.5])
-    total_duration_seconds = max(16.0, min(20.0, float(total_duration_seconds)))
+        lo = float(getattr(config, "INSTAPOST_REEL_MIN_SECONDS", 22))
+        hi = float(getattr(config, "INSTAPOST_REEL_MAX_SECONDS", 52))
+        total_duration_seconds = random.uniform(lo, hi)
+    lo = float(getattr(config, "INSTAPOST_REEL_MIN_SECONDS", 22))
+    hi = float(getattr(config, "INSTAPOST_REEL_MAX_SECONDS", 52))
+    total_duration_seconds = max(lo, min(hi, float(total_duration_seconds)))
 
     n = min(5, max(3, len(clip_paths)))
     # Use up to n segments: if more clips, trim; if fewer, repeat.
@@ -355,10 +359,10 @@ def build_instapost_reel(
             text=vibe_text,
             frame_size=frame_size,
             y=int(h * 0.70),
-            font_size=int(h * 0.032),
+            font_size=int(h * 0.038),
             max_width_ratio=0.88,
             max_lines=2,
-            bg_alpha=168,
+            bg_alpha=198,
             highlight_budgetwing=True,
         )
         vibe_pngs.append(vp)
@@ -367,7 +371,7 @@ def build_instapost_reel(
         text=cta,
         frame_size=frame_size,
         y=int(h * 0.78),
-        font_size=int(h * 0.042),
+        font_size=int(h * 0.048),
         max_width_ratio=0.86,
         max_lines=2,
         bg_alpha=0,
@@ -427,7 +431,7 @@ def build_instapost_reel(
         "wipeleft",
         "wiperight",
     ]
-    xfade_dur = max(0.22, min(0.55, seg_dur * 0.22))
+    xfade_dur = max(0.4, min(1.0, seg_dur * 0.36))
 
     transition_lines: list[str] = []
     current = v_labels[0]

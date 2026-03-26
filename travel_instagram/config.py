@@ -74,8 +74,25 @@ PEXELS_VIDEOS_PAGE_SIZE = 10
 
 # Reel: exactly this many still frames (downloaded photos), combined with FFmpeg
 REEL_FRAME_COUNT = int(os.getenv("REEL_FRAME_COUNT", "5"))
-# Total reel length in seconds (split evenly across frames)
+# Legacy cap when REEL_SECONDS_PER_SLIDE is not used alone; still honored as upper hint.
 REEL_TOTAL_SECONDS = float(os.getenv("REEL_TOTAL_SECONDS", "15"))
+# Travel carousel reel: total length ≈ n_slides × per-slide seconds (clamped), not a fixed ~15–20s.
+REEL_SECONDS_PER_SLIDE = float(os.getenv("REEL_SECONDS_PER_SLIDE", "2.9"))
+REEL_MIN_TOTAL_SECONDS = float(os.getenv("REEL_MIN_TOTAL_SECONDS", "8"))
+REEL_MAX_TOTAL_SECONDS = float(os.getenv("REEL_MAX_TOTAL_SECONDS", "78"))
+# xfade between segments — higher values = slower, more visible transitions
+REEL_XFADE_MIN_SECONDS = float(os.getenv("REEL_XFADE_MIN_SECONDS", "0.42"))
+REEL_XFADE_MAX_SECONDS = float(os.getenv("REEL_XFADE_MAX_SECONDS", "0.95"))
+REEL_XFADE_SEGMENT_RATIO = float(os.getenv("REEL_XFADE_SEGMENT_RATIO", "0.34"))
+
+# InstaPost FFmpeg reel: duration range when caller does not set a total
+INSTAPOST_REEL_MIN_SECONDS = float(os.getenv("INSTAPOST_REEL_MIN_SECONDS", "22"))
+INSTAPOST_REEL_MAX_SECONDS = float(os.getenv("INSTAPOST_REEL_MAX_SECONDS", "52"))
+
+# Carousel slide text: larger type + semi-transparent panel behind the text block
+CAROUSEL_TITLE_FONT_SCALE = float(os.getenv("CAROUSEL_TITLE_FONT_SCALE", "1.14"))
+CAROUSEL_BODY_FONT_SCALE = float(os.getenv("CAROUSEL_BODY_FONT_SCALE", "1.10"))
+CAROUSEL_TEXT_PANEL_ALPHA = int(max(0, min(255, int(os.getenv("CAROUSEL_TEXT_PANEL_ALPHA", "218")))))
 
 
 def resolve_ffmpeg_executable() -> str | None:

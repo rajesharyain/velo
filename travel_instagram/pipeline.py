@@ -27,7 +27,7 @@ def _reel_carousel_slide_paths(slide_paths: list[Path], count: int) -> list[Path
     Use rendered carousel JPEGs for the reel — **unique files only**, no cycling duplicates.
 
     If there are fewer slides than ``count``, the reel uses that many distinct frames
-    (each gets a longer share of ``REEL_TOTAL_SECONDS``).
+    (each gets a longer share of the dynamic reel timeline; see ``REEL_SECONDS_PER_SLIDE``).
     """
     pool = [p for p in slide_paths if p.is_file()]
     if not pool:

@@ -72,9 +72,9 @@ def _typography_scale(th: int, ref: int = 1920) -> float:
 
 def _scaled_title_sizes(th: int) -> list[int]:
     """~25% larger than previous ladder at 1920; scales with slide height."""
-    s = _typography_scale(th) * 1.26
+    s = _typography_scale(th) * 1.26 * float(getattr(config, "CAROUSEL_TITLE_FONT_SCALE", 1.0))
     bases = [48, 42, 36, 32, 28, 24]
-    out = [max(22, int(round(b * s))) for b in bases]
+    out = [max(24, int(round(b * s))) for b in bases]
     for i in range(1, len(out)):
         if out[i] >= out[i - 1]:
             out[i] = out[i - 1] - 2
@@ -83,9 +83,9 @@ def _scaled_title_sizes(th: int) -> list[int]:
 
 def _scaled_body_sizes(th: int) -> list[int]:
     """~12% larger than previous ladder at 1920; scales with slide height."""
-    s = _typography_scale(th) * 1.12
+    s = _typography_scale(th) * 1.12 * float(getattr(config, "CAROUSEL_BODY_FONT_SCALE", 1.0))
     bases = [32, 28, 26, 24]
-    out = [max(18, int(round(b * s))) for b in bases]
+    out = [max(20, int(round(b * s))) for b in bases]
     for i in range(1, len(out)):
         if out[i] >= out[i - 1]:
             out[i] = out[i - 1] - 2
@@ -405,7 +405,7 @@ def render_text_slide(
     tw, th = size
     im = Image.open(image_path).convert("RGB")
     im = _cover_crop(im, size)
-    canvas = _darken_backdrop(im, amount=0.13, blur_radius=0.8)
+    canvas = _darken_backdrop(im, amount=0.17, blur_radius=1.0)
 
     draw = ImageDraw.Draw(canvas)
     inset = max(0.82, min(1.0, float(config.REEL_TEXT_SIDE_INSET_RATIO)))
@@ -558,6 +558,38 @@ def render_text_slide(
     y = content_top + max(0, (content_bot - content_top - total_h) // 2)
     y = max(content_top, min(y, content_bot - total_h))
     y = max(safe_top, int(y - th * bias))
+
+    mw_text = 0
+    _dummy = ImageDraw.Draw(Image.new("RGB", (tw, th)))
+    for ln in p_lines:
+        if ln:
+            bb = _dummy.textbbox((0, 0), ln, font=title_font)
+            mw_text = max(mw_text, bb[2] - bb[0])
+    for ln in s_lines:
+        if ln:
+            bb = _dummy.textbbox((0, 0), ln, font=body_font)
+            mw_text = max(mw_text, bb[2] - bb[0])
+    if mw_text > 0 and total_h > 0:
+        panel_rx = max(22, int(tw * 0.04))
+        panel_ry = max(18, int(th * 0.024))
+        bw = min(tw - 28, mw_text + panel_rx * 2)
+        bh = total_h + panel_ry * 2
+        px0 = (tw - bw) // 2
+        py0 = max(safe_top - 2, y - panel_ry)
+        if py0 + bh > th - safe_bot + 12:
+            py0 = max(safe_top, th - safe_bot - bh)
+        palpha = int(getattr(config, "CAROUSEL_TEXT_PANEL_ALPHA", 218))
+        panel_layer = Image.new("RGBA", (tw, th), (0, 0, 0, 0))
+        pd = ImageDraw.Draw(panel_layer)
+        pd.rounded_rectangle(
+            (px0, py0, px0 + bw, py0 + bh),
+            radius=int(min(34, th * 0.032)),
+            fill=(12, 16, 24, palpha),
+        )
+        canvas = Image.alpha_composite(canvas.convert("RGBA"), panel_layer).convert(
+            "RGB"
+        )
+        draw = ImageDraw.Draw(canvas)
 
     y_after_primary = draw_primary_at(y)
     if s_lines:
@@ -830,6 +862,17 @@ def _encode_reel_rawvideo_to_mp4(
         )
 
 
+def _reel_pick_xfade_seconds(seg_dur: float) -> float:
+    """Slower, more visible cuts between reel segments (config-driven bounds)."""
+    lo = float(getattr(config, "REEL_XFADE_MIN_SECONDS", 0.42))
+    hi = float(getattr(config, "REEL_XFADE_MAX_SECONDS", 0.95))
+    r = float(getattr(config, "REEL_XFADE_SEGMENT_RATIO", 0.34))
+    x = max(lo, min(hi, seg_dur * r))
+    if x >= seg_dur - 0.06:
+        x = max(lo * 0.82, min(hi * 0.88, seg_dur * 0.38))
+    return x
+
+
 # Same family as InstaPost reels (ffmpeg xfade transition names).
 _REEL_XFADE_TRANSITIONS = (
     "fade",
@@ -947,19 +990,23 @@ def build_reel_from_images(
     chosen = pool[:c]
 
     w, h = config.REEL_SIZE
-    total = max(5.0, min(30.0, config.REEL_TOTAL_SECONDS))
     n = c
     fps = 30
+    per_slide = float(getattr(config, "REEL_SECONDS_PER_SLIDE", 2.9))
+    t_min = float(getattr(config, "REEL_MIN_TOTAL_SECONDS", 8))
+    t_max = float(getattr(config, "REEL_MAX_TOTAL_SECONDS", 78))
+    jitter = random.uniform(0.94, 1.08)
+    total = max(t_min, min(t_max, n * per_slide * jitter))
     per_simple = total / float(n)
 
     xfade_dur = 0.0
     seg_actual = total
     if n > 1:
         per_est = total / n
-        xfade_dur = max(0.18, min(0.55, per_est * 0.22))
+        xfade_dur = _reel_pick_xfade_seconds(per_est)
         seg_dur = (total + (n - 1) * xfade_dur) / n
-        if xfade_dur >= seg_dur - 0.04:
-            xfade_dur = max(0.12, min(0.35, seg_dur * 0.35))
+        if xfade_dur >= seg_dur - 0.05:
+            xfade_dur = _reel_pick_xfade_seconds(seg_dur * 0.92)
             seg_dur = (total + (n - 1) * xfade_dur) / n
         frames_each = max(1, int(round(seg_dur * fps)))
         seg_actual = frames_each / float(fps)
