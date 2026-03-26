@@ -21,6 +21,44 @@
     .item.dragging { opacity:.55; border-style:dashed; }
     .thumb { width:132px; height:220px; border-radius:10px; object-fit:cover; background:#0b1220; border:1px solid #2a3650; }
     .preview-wrap { display:flex; gap:12px; align-items:flex-start; }
+    .thumb-wrap {
+      width:132px;
+      height:220px;
+      border-radius:10px;
+      position:relative;
+      overflow:hidden;
+      background:#0b1220;
+      border:1px solid #2a3650;
+      flex:0 0 132px;
+    }
+    .thumb-media { width:100%; height:100%; object-fit:cover; display:block; background:#0b1220; }
+    .caption-overlay-preview {
+      position:absolute;
+      left:50%;
+      top:50%;
+      transform:translate(-50%, -50%);
+      padding:8px 10px;
+      border-radius:12px;
+      background:rgba(8, 12, 22, 0.68);
+      border:1px solid rgba(42, 54, 80, 0.85);
+      color:#f5f8ff;
+      font-weight:800;
+      text-align:center;
+      max-width:118px;
+      cursor:default;
+      user-select:none;
+      white-space:pre-wrap;
+      word-break:break-word;
+      line-height:1.15;
+    }
+    .caption-overlay-preview.empty { opacity:0.65; color:#b8c3db; }
+    .font-size-row {
+      margin-top:8px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+    }
+    .font-size-row select { padding:8px 10px; }
     .remove-btn {
       background:#22060a;
       border:1px solid #6b1b2a;
@@ -129,6 +167,13 @@
           <option value="default" selected>Speed: Default</option>
           <option value="fast">Speed: Fast</option>
         </select>
+        <select id="overlayFontScale" title="Overlay font size (common for all)">
+          <option value="0.8">Overlay Font: Small</option>
+          <option value="1.0" selected>Overlay Font: Default</option>
+          <option value="1.2">Overlay Font: Large</option>
+          <option value="1.4">Overlay Font: XL</option>
+          <option value="1.6">Overlay Font: XXL</option>
+        </select>
         <button id="generateBtn">Generate Reel</button>
       </div>
       <div id="speedPreview" class="speed-preview" aria-label="Transition speed preview">
@@ -222,6 +267,7 @@
     const musicSel = document.getElementById("musicTrack");
     const transitionTypeSel = document.getElementById("transitionType");
     const transitionSpeedSel = document.getElementById("transitionSpeed");
+    const overlayFontScaleSel = document.getElementById("overlayFontScale");
     const musicPlayBtn = document.getElementById("musicPlayBtn");
     const musicPreviewAudio = document.getElementById("musicPreviewAudio");
     const musicMeta = document.getElementById("musicMeta");
@@ -319,10 +365,13 @@
         const url = it.source === "server" ? it.web_url : URL.createObjectURL(it.file);
         card.innerHTML = `
           <div class="preview-wrap">
-            ${isVideo
-              ? `<video class="thumb" src="${url}" muted playsinline controls></video>`
-              : `<img class="thumb" src="${url}" alt="upload preview" />`
-            }
+            <div class="thumb-wrap">
+              ${isVideo
+                ? `<video class="thumb-media" src="${url}" muted playsinline controls></video>`
+                : `<img class="thumb-media" src="${url}" alt="upload preview" />`
+              }
+              <div class="caption-overlay-preview empty" data-overlay="true"></div>
+            </div>
             <div style="flex:1;">
               <div class="muted" style="margin-bottom:8px;">${idx + 1}. ${
                 it.source === "server"
@@ -342,6 +391,25 @@
           capTa.addEventListener("input", () => {
             itemsState[idx].caption = capTa.value || "";
           });
+        }
+
+        const overlayEl = card.querySelector(".caption-overlay-preview[data-overlay='true']");
+
+        const applyOverlayPreview = () => {
+          const txt = (itemsState[idx].caption || "").trim();
+          overlayEl.textContent = txt || " ";
+          overlayEl.classList.toggle("empty", !txt);
+
+          const fs = parseFloat(overlayFontScaleSel.value || "1.0");
+          const previewBasePx = 12; // purely visual; backend uses reel-size scaling
+          overlayEl.style.fontSize = Math.round(previewBasePx * fs) + "px";
+        };
+
+        applyOverlayPreview();
+
+        // Keep preview overlay synced with textarea value.
+        if (capTa) {
+          capTa.addEventListener("input", () => applyOverlayPreview());
         }
 
         const removeBtn = card.querySelector(".remove-btn");
@@ -432,6 +500,7 @@
         fd.append("music_track_id", musicSel.value || "__auto__");
         fd.append("transition_type", transitionTypeSel.value || "auto");
         fd.append("transition_speed", transitionSpeedSel.value || "auto");
+        fd.append("overlay_font_scale", overlayFontScaleSel.value || "1.0");
         const res = await fetch("/api/upload-reel/generate", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
@@ -469,6 +538,10 @@
 
     transitionSpeedSel.addEventListener("change", () => {
       updateSpeedPreview();
+    });
+
+    overlayFontScaleSel.addEventListener("change", () => {
+      renderItems();
     });
 
     Array.from(document.querySelectorAll("#speedPreview .speed-chip")).forEach(ch => {

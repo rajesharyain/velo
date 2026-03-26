@@ -32,7 +32,14 @@ def _try_font(paths: list[str], size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _render_caption_overlay(out_png: Path, caption: str) -> Path:
+def _render_caption_overlay(
+    out_png: Path,
+    caption: str,
+    *,
+    anchor_x: float = 0.5,
+    anchor_y: float = 0.5,
+    font_scale: float = 1.0,
+) -> Path:
     w, h = config.REEL_SIZE
     out_png.parent.mkdir(parents=True, exist_ok=True)
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -43,9 +50,13 @@ def _render_caption_overlay(out_png: Path, caption: str) -> Path:
         img.save(out_png)
         return out_png
 
+    anchor_x = max(0.0, min(1.0, float(anchor_x)))
+    anchor_y = max(0.0, min(1.0, float(anchor_y)))
+    font_scale = max(0.6, min(1.7, float(font_scale)))
+
     font = _try_font(
         [r"C:\Windows\Fonts\segoeuib.ttf", r"C:\Windows\Fonts\arialbd.ttf"],
-        int(h * 0.045),
+        int(h * 0.045 * font_scale),
     )
     max_w = int(w * 0.84)
 
@@ -77,8 +88,11 @@ def _render_caption_overlay(out_png: Path, caption: str) -> Path:
     pad_y = int(max(20, h * 0.022))
     rect_w = min(w - 36, block_w + pad_x * 2)
     rect_h = block_h + pad_y * 2
-    x0 = (w - rect_w) // 2
-    y0 = int(h * 0.68)
+    cx = float(anchor_x) * float(w)
+    cy = float(anchor_y) * float(h)
+    x0 = int(round(cx - rect_w / 2.0))
+    y0 = int(round(cy - rect_h / 2.0))
+    x0 = max(10, min(x0, w - rect_w - 10))
     y0 = max(10, min(y0, h - rect_h - 10))
 
     draw.rounded_rectangle(
@@ -88,13 +102,20 @@ def _render_caption_overlay(out_png: Path, caption: str) -> Path:
     )
 
     cy = y0 + pad_y
-    cx = w // 2
+    cx = x0 + rect_w // 2
+    stroke_w = max(1, int(round(font_scale * 1.1)))
     for ln in lines:
         bb = draw.textbbox((0, 0), ln, font=font)
         tw = bb[2] - bb[0]
-        tx = cx - tw // 2
-        draw.text((tx + 3, cy + 3), ln, font=font, fill=(0, 0, 0, 170))
-        draw.text((tx, cy), ln, font=font, fill=(245, 248, 252, 252))
+        tx = int(round((x0 + rect_w / 2.0) - tw / 2.0))
+        draw.text(
+            (tx, cy),
+            ln,
+            font=font,
+            fill=(245, 248, 252, 252),
+            stroke_width=stroke_w,
+            stroke_fill=(0, 0, 0, 160),
+        )
         cy += (bb[3] - bb[1]) + line_gap
 
     img.save(out_png)
@@ -165,6 +186,8 @@ def build_manual_reel(
     music_track_id: str | None,
     transition_type: str = "auto",
     transition_speed: str = "auto",
+    overlay_positions: list[tuple[float, float]] | None = None,
+    overlay_font_scales: list[float] | None = None,
 ) -> dict[str, Any]:
     if not media_paths:
         raise RuntimeError("Upload at least one image or video.")
@@ -221,9 +244,27 @@ def build_manual_reel(
         out_duration = seg * n - max(0, n - 1) * xfade
 
     seg_paths: list[Path] = []
+
+    if overlay_positions is None:
+        overlay_positions = [(0.5, 0.5)] * n
+    if overlay_font_scales is None:
+        overlay_font_scales = [1.0] * n
+    if len(overlay_positions) < n:
+        overlay_positions = list(overlay_positions) + [(0.5, 0.72)] * (n - len(overlay_positions))
+    if len(overlay_font_scales) < n:
+        overlay_font_scales = list(overlay_font_scales) + [1.0] * (n - len(overlay_font_scales))
+
     for i, src in enumerate(media_paths):
         ov = reel_work / f"overlay_{i:02d}.png"
-        _render_caption_overlay(ov, captions[i] if i < len(captions) else "")
+        anchor = overlay_positions[i] if i < len(overlay_positions) else (0.5, 0.72)
+        fs = overlay_font_scales[i] if i < len(overlay_font_scales) else 1.0
+        _render_caption_overlay(
+            ov,
+            captions[i] if i < len(captions) else "",
+            anchor_x=anchor[0],
+            anchor_y=anchor[1],
+            font_scale=fs,
+        )
         segp = reel_work / f"seg_{i:02d}.mp4"
         if _is_video(src):
             _make_segment_from_video(src, ov, segp, seg)

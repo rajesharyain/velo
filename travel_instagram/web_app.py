@@ -224,6 +224,7 @@ async def api_upload_reel_generate(
     music_track_id: str | None = Form(default=None),
     transition_type: str = Form(default="auto"),
     transition_speed: str = Form(default="auto"),
+    overlay_font_scale: str = Form(default="1.0"),
 ) -> JSONResponse:
     if music_track_id == "__auto__":
         music_track_id = None
@@ -253,6 +254,13 @@ async def api_upload_reel_generate(
 
     media_paths: list[Path] = []
     captions: list[str] = []
+    overlay_positions: list[tuple[float, float]] = []
+    overlay_font_scales: list[float] = []
+    try:
+        requested_font_scale = float((overlay_font_scale or "1.0").strip() or "1.0")
+    except ValueError:
+        requested_font_scale = 1.0
+    requested_font_scale = max(0.6, min(1.7, requested_font_scale))
 
     if items_json:
         try:
@@ -267,6 +275,10 @@ async def api_upload_reel_generate(
                 raise HTTPException(status_code=400, detail="items_json entries must be objects.")
             src = str(it.get("source") or "").strip()
             caption = str(it.get("caption") or "")
+            overlay_x = it.get("overlay_x", 0.5)
+            overlay_y = it.get("overlay_y", 0.72)
+            font_scale = it.get("font_scale", 1.0)
+
             if src == "server":
                 asset_id = str(it.get("asset_id") or "").strip()
                 if not asset_id:
@@ -280,6 +292,8 @@ async def api_upload_reel_generate(
                     raise HTTPException(status_code=404, detail=f"Server asset not found: {asset_id}")
                 media_paths.append(cand)
                 captions.append(caption)
+                overlay_positions.append((float(overlay_x), float(overlay_y)))
+                overlay_font_scales.append(float(font_scale))
             elif src == "upload":
                 upload_index = it.get("upload_index")
                 if upload_index is None:
@@ -290,6 +304,8 @@ async def api_upload_reel_generate(
                     raise HTTPException(status_code=400, detail="upload_index out of range.")
                 media_paths.append(uploaded_paths[upload_index])
                 captions.append(caption)
+                overlay_positions.append((float(overlay_x), float(overlay_y)))
+                overlay_font_scales.append(float(font_scale))
             else:
                 raise HTTPException(status_code=400, detail=f"Unknown item source: {src!r}")
     else:
@@ -302,6 +318,13 @@ async def api_upload_reel_generate(
             raise HTTPException(status_code=400, detail="Invalid captions_json payload.") from e
 
         media_paths = list(uploaded_paths)
+        # Legacy mode: keep previous default bottom-center caption placement.
+        overlay_positions = [(0.5, 0.5)] * len(media_paths)
+        overlay_font_scales = [requested_font_scale] * len(media_paths)
+
+    # Editor currently enforces centered overlay placement.
+    overlay_positions = [(0.5, 0.5)] * len(media_paths)
+    overlay_font_scales = [requested_font_scale] * len(media_paths)
 
     try:
         if not media_paths:
@@ -315,6 +338,8 @@ async def api_upload_reel_generate(
             music_track_id=music_track_id,
             transition_type=transition_type,
             transition_speed=transition_speed,
+            overlay_positions=overlay_positions,
+            overlay_font_scales=overlay_font_scales,
         )
         out = dict(res)
         out["video_url"] = _to_media_url(out.get("output_path") or "") or None
