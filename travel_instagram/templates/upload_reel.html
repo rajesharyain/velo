@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, Arial, sans-serif; background:#0b1220; color:#e7ecf5; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 20px; }
+    .card { background:#111a2d; border:1px solid #26324a; border-radius:14px; padding:16px; margin-top:14px; }
+    .row { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+    .muted { color:#9ca8bf; font-size:13px; }
+    input[type=file], select, textarea, button {
+      background:#0d1525; color:#e7ecf5; border:1px solid #2a3650; border-radius:10px; padding:10px 12px;
+    }
+    textarea { width:100%; min-height:84px; resize:vertical; }
+    button { cursor:pointer; font-weight:600; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .items { display:grid; gap:12px; margin-top:12px; }
+    .item { border:1px solid #26324a; border-radius:12px; padding:12px; background:#0f182a; }
+    .item.dragging { opacity:.55; border-style:dashed; }
+    .thumb { width:132px; height:220px; border-radius:10px; object-fit:cover; background:#0b1220; border:1px solid #2a3650; }
+    .preview-wrap { display:flex; gap:12px; align-items:flex-start; }
+    .status { min-height:20px; margin-top:8px; }
+    .err { color:#ff8c8c; }
+    .ok { color:#86efac; }
+    .video-frame {
+      width: min(420px, 92vw);
+      aspect-ratio: 9 / 16;
+      border:1px solid #2a3650;
+      border-radius:12px;
+      overflow:hidden;
+      background:#0b1220;
+      margin-top:10px;
+    }
+    .video-frame video { width:100%; height:100%; object-fit:cover; display:block; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    {% include "_nav.html" %}
+    <div class="card">
+      <h2 style="margin:0 0 10px;">Generate Reel from Images/Videos</h2>
+      <div class="muted">Upload files, add one caption per item, then generate a 9:16 reel with FFmpeg.</div>
+      <div class="muted" style="margin-top:6px;">Tip: drag and drop items below to reorder reel sequence.</div>
+      <div class="row" style="margin-top:12px;">
+        <input id="mediaFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm" multiple />
+        <select id="musicTrack"></select>
+        <button id="generateBtn">Generate Reel</button>
+      </div>
+      <div id="status" class="status muted"></div>
+    </div>
+
+    <div id="items" class="items"></div>
+
+    <div id="result" class="card" style="display:none;">
+      <h3 style="margin:0 0 8px;">Generated Reel</h3>
+      <div class="video-frame">
+        <video id="outVideo" controls playsinline></video>
+      </div>
+      <div id="meta" class="muted" style="margin-top:8px;"></div>
+    </div>
+  </div>
+
+  <script>
+    const filesInput = document.getElementById("mediaFiles");
+    const itemsEl = document.getElementById("items");
+    const statusEl = document.getElementById("status");
+    const genBtn = document.getElementById("generateBtn");
+    const musicSel = document.getElementById("musicTrack");
+    const resultEl = document.getElementById("result");
+    const outVideo = document.getElementById("outVideo");
+    const meta = document.getElementById("meta");
+    let orderedFiles = [];
+
+    async function loadTracks() {
+      musicSel.innerHTML = "";
+      const optAuto = document.createElement("option");
+      optAuto.value = "__auto__";
+      optAuto.textContent = "Music: Auto (.env / first track)";
+      musicSel.appendChild(optAuto);
+      const optNone = document.createElement("option");
+      optNone.value = "__none__";
+      optNone.textContent = "Music: None";
+      musicSel.appendChild(optNone);
+      try {
+        const r = await fetch("/api/music-tracks");
+        const j = await r.json();
+        for (const t of (j.tracks || [])) {
+          const opt = document.createElement("option");
+          opt.value = t.path;
+          opt.textContent = `Music: ${t.path}`;
+          musicSel.appendChild(opt);
+        }
+      } catch (_) {}
+    }
+
+    function renderItems() {
+      itemsEl.innerHTML = "";
+      orderedFiles.forEach((f, idx) => {
+        const card = document.createElement("div");
+        card.className = "item";
+        card.draggable = true;
+        card.dataset.index = String(idx);
+        const url = URL.createObjectURL(f);
+        const isVideo = f.type.startsWith("video/");
+        card.innerHTML = `
+          <div class="preview-wrap">
+            ${isVideo
+              ? `<video class="thumb" src="${url}" muted playsinline controls></video>`
+              : `<img class="thumb" src="${url}" alt="upload preview" />`
+            }
+            <div style="flex:1;">
+              <div class="muted" style="margin-bottom:8px;">${idx + 1}. ${f.name}</div>
+              <textarea data-caption-index="${idx}" placeholder="Caption for this item..."></textarea>
+            </div>
+          </div>
+        `;
+        card.addEventListener("dragstart", (e) => {
+          card.classList.add("dragging");
+          e.dataTransfer.setData("text/plain", String(idx));
+          e.dataTransfer.effectAllowed = "move";
+        });
+        card.addEventListener("dragend", () => {
+          card.classList.remove("dragging");
+        });
+        card.addEventListener("dragover", (e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
+        });
+        card.addEventListener("drop", (e) => {
+          e.preventDefault();
+          const from = Number(e.dataTransfer.getData("text/plain"));
+          const to = Number(card.dataset.index);
+          if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
+          const caps = getCaptionsByIndex();
+          const [movedFile] = orderedFiles.splice(from, 1);
+          orderedFiles.splice(to, 0, movedFile);
+          const [movedCap] = caps.splice(from, 1);
+          caps.splice(to, 0, movedCap);
+          renderItems();
+          applyCaptions(caps);
+        });
+        itemsEl.appendChild(card);
+      });
+    }
+
+    function getCaptionsByIndex() {
+      const nodes = Array.from(document.querySelectorAll("textarea[data-caption-index]"));
+      return nodes.map(t => t.value || "");
+    }
+
+    function applyCaptions(captions) {
+      const nodes = Array.from(document.querySelectorAll("textarea[data-caption-index]"));
+      nodes.forEach((n, i) => { n.value = captions[i] || ""; });
+    }
+
+    filesInput.addEventListener("change", () => {
+      orderedFiles = Array.from(filesInput.files || []);
+      renderItems();
+    });
+
+    genBtn.addEventListener("click", async () => {
+      const files = orderedFiles;
+      if (!files.length) {
+        statusEl.className = "status err";
+        statusEl.textContent = "Please upload at least one file.";
+        return;
+      }
+      genBtn.disabled = true;
+      resultEl.style.display = "none";
+      statusEl.className = "status muted";
+      statusEl.textContent = "Generating reel...";
+      try {
+        const capNodes = Array.from(document.querySelectorAll("textarea[data-caption-index]"));
+        const captions = capNodes.map(t => t.value || "");
+        const fd = new FormData();
+        files.forEach(f => fd.append("files", f));
+        fd.append("captions_json", JSON.stringify(captions));
+        fd.append("music_track_id", musicSel.value || "__auto__");
+        const res = await fetch("/api/upload-reel/generate", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+
+        outVideo.src = data.video_url || "";
+        meta.textContent = `Run: ${data.run_id || "-"} | Assets: ${data.media_count || 0}`;
+        resultEl.style.display = "block";
+        statusEl.className = "status ok";
+        statusEl.textContent = "Reel generated successfully.";
+      } catch (err) {
+        statusEl.className = "status err";
+        statusEl.textContent = String(err && err.message ? err.message : err);
+      } finally {
+        genBtn.disabled = false;
+      }
+    });
+
+    loadTracks();
+  </script>
+</body>
+</html>

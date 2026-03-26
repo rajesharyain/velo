@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
@@ -25,6 +25,7 @@ from starlette.templating import Jinja2Templates
 from travel_instagram import config
 from travel_instagram import pipeline
 from travel_instagram import groq_service
+from travel_instagram import manual_reel_builder
 from travel_instagram import mcp_reel_tool
 from travel_instagram import reels_catalog
 from travel_instagram.instagram_post_export import safe_carousel_run_dir
@@ -141,6 +142,18 @@ async def mcp_reels_page(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/upload-reel", response_class=HTMLResponse)
+async def upload_reel_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "upload_reel.html",
+        {
+            "request": request,
+            "title": "Generate Reel from Media",
+            "nav_active": "upload_reel",
+        },
+    )
+
+
 @app.post("/api/mcp-reels/generate")
 async def api_mcp_reels_generate(body: McpReelBody) -> JSONResponse:
     prompt = (body.prompt or "").strip()
@@ -187,6 +200,65 @@ async def api_mcp_reels_generate(body: McpReelBody) -> JSONResponse:
         raise
     except Exception as e:
         logger.exception("MCP reel generation failed")
+        raise HTTPException(status_code=500, detail=str(e)) from e
+
+
+@app.post("/api/upload-reel/generate")
+async def api_upload_reel_generate(
+    files: list[UploadFile] = File(...),
+    captions_json: str = Form(default="[]"),
+    music_track_id: str | None = Form(default=None),
+) -> JSONResponse:
+    if not files:
+        raise HTTPException(status_code=400, detail="Upload at least one file.")
+
+    if music_track_id == "__auto__":
+        music_track_id = None
+    if isinstance(music_track_id, str) and music_track_id.strip() == "":
+        music_track_id = None
+
+    try:
+        parsed = json.loads(captions_json or "[]")
+        captions = [str(x or "") for x in parsed] if isinstance(parsed, list) else []
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=400, detail="Invalid captions_json payload.") from e
+
+    allowed = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".m4v", ".webm"}
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    temp_dir = config.OUTPUT_DIR / "manual_reels" / f"tmp_{ts}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    media_paths: list[Path] = []
+    try:
+        for i, up in enumerate(files):
+            suffix = Path(up.filename or "").suffix.lower()
+            if suffix not in allowed:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Unsupported file type '{suffix}' for '{up.filename}'.",
+                )
+            name = f"{i:02d}_{Path(up.filename or 'asset').stem}{suffix}"
+            out = temp_dir / name
+            data = await up.read()
+            out.write_bytes(data)
+            media_paths.append(out)
+
+        res = await asyncio.to_thread(
+            manual_reel_builder.build_manual_reel,
+            uploads_dir=temp_dir,
+            media_paths=media_paths,
+            captions=captions,
+            music_track_id=music_track_id,
+        )
+        out = dict(res)
+        out["video_url"] = _to_media_url(out.get("output_path") or "") or None
+        return JSONResponse(content=out)
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:
+        logger.exception("Upload reel generation failed")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
