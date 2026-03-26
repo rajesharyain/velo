@@ -893,12 +893,16 @@ def _xfade_concat_reel_segments(
     out_mp4: Path,
     *,
     context: str,
+    transition_style: str | None = None,
 ) -> None:
     """
-    Chain short vertical segment MP4s with random ``xfade`` transitions (InstaPost-style).
+    Chain short vertical segment MP4s with ``xfade`` transitions (InstaPost-style).
 
     ``seg_actual`` = real duration of each segment MP4 (frame-quantized). Do **not**
     ``trim`` past the file length — that triggers decoder errors on some FFmpeg builds.
+
+    If ``transition_style`` is provided, it is used for all transitions. Otherwise, a
+    random transition is picked for each boundary.
     """
     paths = [Path(p) for p in segment_paths if Path(p).is_file()]
     n = len(paths)
@@ -930,7 +934,12 @@ def _xfade_concat_reel_segments(
     for i in range(1, n):
         nxt = v_labels[i]
         out = f"[rx{i}]"
-        tr = random.choice(_REEL_XFADE_TRANSITIONS)
+        if transition_style is None:
+            tr = random.choice(_REEL_XFADE_TRANSITIONS)
+        else:
+            if transition_style not in _REEL_XFADE_TRANSITIONS:
+                raise RuntimeError(f"Invalid transition_style={transition_style!r}.")
+            tr = transition_style
         offset = max(0.01, current_duration - xfade_dur)
         transition_lines.append(
             f"{current}{nxt}xfade=transition={tr}:duration={xfade_dur:.3f}:offset={offset:.3f}{out}"

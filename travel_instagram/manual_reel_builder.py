@@ -163,6 +163,8 @@ def build_manual_reel(
     media_paths: list[Path],
     captions: list[str],
     music_track_id: str | None,
+    transition_type: str = "auto",
+    transition_speed: str = "auto",
 ) -> dict[str, Any]:
     if not media_paths:
         raise RuntimeError("Upload at least one image or video.")
@@ -180,8 +182,43 @@ def build_manual_reel(
     per = max(2.0, min(6.0, float(getattr(config, "REEL_SECONDS_PER_SLIDE", 2.9))))
     total = max(8.0, min(90.0, n * per))
     seg = max(1.0 / fps, int(round((total / n) * fps)) / float(fps))
-    xfade = media_processor._reel_pick_xfade_seconds(seg) if n > 1 else 0.0  # type: ignore[attr-defined]
-    out_duration = seg * n - max(0, n - 1) * xfade
+    xfade = 0.0
+    out_duration = seg * n
+
+    # Transition controls are implemented at the concat stage.
+    # For "none" we use hard cuts (concat filter) instead of xfade.
+    none_mode = transition_type == "none"
+    if n > 1 and not none_mode:
+        base_xfade = media_processor._reel_pick_xfade_seconds(seg)  # type: ignore[attr-defined]
+        speed = (transition_speed or "auto").lower().strip()
+        speed_factor = 1.0
+        if speed == "slow":
+            speed_factor = 0.65
+        elif speed == "slower":
+            speed_factor = 0.55
+        elif speed == "slowest":
+            speed_factor = 0.48
+        elif speed in {"fast", "faster"}:
+            speed_factor = 1.35
+        elif speed in {"default", "normal"}:
+            speed_factor = 1.0
+        elif speed in {"auto"}:
+            speed_factor = 1.0
+        else:
+            raise RuntimeError(f"Invalid transition_speed={transition_speed!r}")
+
+        xfade = base_xfade * speed_factor
+
+        # Clamp to same safe bounds the picker uses (keeps "too fast" from breaking).
+        lo = float(getattr(config, "REEL_XFADE_MIN_SECONDS", 0.42))
+        hi = float(getattr(config, "REEL_XFADE_MAX_SECONDS", 0.95))
+        xfade = max(lo, min(hi, xfade))
+
+        # Avoid xfade durations that consume the segment too aggressively.
+        if xfade >= seg - 0.06:
+            xfade = max(lo * 0.82, min(hi * 0.88, seg * 0.38))
+
+        out_duration = seg * n - max(0, n - 1) * xfade
 
     seg_paths: list[Path] = []
     for i, src in enumerate(media_paths):
@@ -197,7 +234,36 @@ def build_manual_reel(
     no_audio = out_dir / "reel_noaudio.mp4"
     if n == 1:
         shutil.copy(seg_paths[0], no_audio)
+    elif none_mode:
+        # Hard cuts: concat the MP4 segments without transitions.
+        exe = media_processor._ensure_ffmpeg()  # type: ignore[attr-defined]
+        cmd: list[str] = [exe, "-y", "-fflags", "+genpts"]
+        for p in seg_paths:
+            cmd.extend(["-i", str(p)])
+        v_inputs = "".join([f"[{i}:v]" for i in range(len(seg_paths))])
+        n_seg = len(seg_paths)
+        cmd.extend(
+            [
+                "-filter_complex",
+                f"{v_inputs}concat=n={n_seg}:v=1:a=0[v]",
+                "-map",
+                "[v]",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-preset",
+                "veryfast",
+                "-crf",
+                "20",
+                "-t",
+                f"{out_duration:.3f}",
+                str(no_audio),
+            ]
+        )
+        media_processor._run_ffmpeg_cmd(cmd, "manual reel hard cuts concat")  # type: ignore[attr-defined]
     else:
+        transition_style = None if transition_type == "auto" else transition_type
         media_processor._xfade_concat_reel_segments(  # type: ignore[attr-defined]
             seg_paths,
             seg,
@@ -205,6 +271,7 @@ def build_manual_reel(
             out_duration,
             no_audio,
             context="manual reel xfade concat",
+            transition_style=transition_style,
         )
 
     out_mp4 = out_dir / "reel.mp4"

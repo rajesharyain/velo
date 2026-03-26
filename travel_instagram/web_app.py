@@ -49,6 +49,12 @@ app.mount(
     name="media",
 )
 
+app.mount(
+    "/music",
+    StaticFiles(directory=str(config.MUSIC_LIBRARY_DIR)),
+    name="music",
+)
+
 app.include_router(instapost_router)
 
 
@@ -208,6 +214,8 @@ async def api_upload_reel_generate(
     files: list[UploadFile] = File(...),
     captions_json: str = Form(default="[]"),
     music_track_id: str | None = Form(default=None),
+    transition_type: str = Form(default="auto"),
+    transition_speed: str = Form(default="auto"),
 ) -> JSONResponse:
     if not files:
         raise HTTPException(status_code=400, detail="Upload at least one file.")
@@ -249,6 +257,8 @@ async def api_upload_reel_generate(
             media_paths=media_paths,
             captions=captions,
             music_track_id=music_track_id,
+            transition_type=transition_type,
+            transition_speed=transition_speed,
         )
         out = dict(res)
         out["video_url"] = _to_media_url(out.get("output_path") or "") or None

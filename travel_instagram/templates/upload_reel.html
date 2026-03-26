@@ -21,6 +21,62 @@
     .item.dragging { opacity:.55; border-style:dashed; }
     .thumb { width:132px; height:220px; border-radius:10px; object-fit:cover; background:#0b1220; border:1px solid #2a3650; }
     .preview-wrap { display:flex; gap:12px; align-items:flex-start; }
+    .remove-btn {
+      background:#22060a;
+      border:1px solid #6b1b2a;
+      color:#ffb4c0;
+      padding:6px 10px;
+      border-radius:10px;
+      font-weight:700;
+      cursor:pointer;
+      white-space:nowrap;
+    }
+    .remove-btn:disabled { opacity:.55; cursor:not-allowed; }
+
+    .speed-preview {
+      display:flex;
+      gap:10px;
+      margin-top:10px;
+      flex-wrap:wrap;
+    }
+    .speed-chip {
+      border:1px solid #2a3650;
+      background:#0f182a;
+      border-radius:12px;
+      padding:10px;
+      display:flex;
+      gap:10px;
+      align-items:center;
+      cursor:pointer;
+      user-select:none;
+      min-width:160px;
+      opacity:0.72;
+    }
+    .speed-chip.active {
+      opacity:1;
+      border-color:#4f8cff;
+      box-shadow:0 0 0 2px rgba(79,140,255,0.18);
+    }
+    .speed-chip .label { font-weight:800; font-size:13px; }
+    .speed-chip .desc { color:#9ca8bf; font-size:12px; margin-top:2px; }
+
+    .music-preview {
+      display:flex;
+      gap:12px;
+      align-items:center;
+      margin-top:12px;
+      flex-wrap:wrap;
+    }
+    .music-meta { min-width:240px; }
+    .play-btn {
+      background:#11243a;
+      border:1px solid #2a3650;
+      border-radius:10px;
+      padding:10px 12px;
+      cursor:pointer;
+      font-weight:800;
+    }
+    .play-btn:disabled { opacity:.55; cursor:not-allowed; }
     .status { min-height:20px; margin-top:8px; }
     .err { color:#ff8c8c; }
     .ok { color:#86efac; }
@@ -46,7 +102,91 @@
       <div class="row" style="margin-top:12px;">
         <input id="mediaFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm" multiple />
         <select id="musicTrack"></select>
+        <select id="transitionType" title="Transition type">
+          <option value="auto" selected>Transition: Auto (random)</option>
+          <option value="fade">Transition: Fade</option>
+          <option value="slideleft">Transition: Slide Left</option>
+          <option value="slideright">Transition: Slide Right</option>
+          <option value="slideup">Transition: Slide Up</option>
+          <option value="slidedown">Transition: Slide Down</option>
+          <option value="wipeleft">Transition: Wipe Left</option>
+          <option value="wiperight">Transition: Wipe Right</option>
+          <option value="none">Transition: None (hard cuts)</option>
+        </select>
+        <select id="transitionSpeed" title="Transition speed">
+          <option value="auto">Speed: Auto</option>
+          <option value="slow">Speed: Slow</option>
+          <option value="slower">Speed: Slower</option>
+          <option value="default" selected>Speed: Default</option>
+          <option value="fast">Speed: Fast</option>
+        </select>
         <button id="generateBtn">Generate Reel</button>
+      </div>
+      <div id="speedPreview" class="speed-preview" aria-label="Transition speed preview">
+        <div class="speed-chip active" data-speed="default">
+          <div style="width:42px;height:42px;">
+            <svg width="42" height="42" viewBox="0 0 42 42">
+              <rect x="8" y="10" width="10" height="22" rx="3" fill="#4f8cff"/>
+              <rect x="22" y="10" width="10" height="22" rx="3" fill="#fbbf24" opacity="0.95"/>
+              <path d="M10 30 L16 24 L10 18" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div>
+            <div class="label">Default</div>
+            <div class="desc">Balanced transitions</div>
+          </div>
+        </div>
+        <div class="speed-chip" data-speed="slow">
+          <div style="width:42px;height:42px;">
+            <svg width="42" height="42" viewBox="0 0 42 42">
+              <defs>
+                <linearGradient id="g_slow" x1="0" x2="1">
+                  <stop offset="0" stop-color="#4f8cff"/>
+                  <stop offset="1" stop-color="#6ee7ff"/>
+                </linearGradient>
+              </defs>
+              <rect x="8" y="10" width="10" height="22" rx="3" fill="url(#g_slow)"/>
+              <rect x="22" y="10" width="10" height="22" rx="3" fill="#86efac" opacity="0.9"/>
+              <path d="M23 30 L17 24 L23 18" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div>
+            <div class="label">Slow</div>
+            <div class="desc">More visible xfade</div>
+          </div>
+        </div>
+        <div class="speed-chip" data-speed="slower">
+          <div style="width:42px;height:42px;">
+            <svg width="42" height="42" viewBox="0 0 42 42">
+              <rect x="8" y="10" width="10" height="22" rx="3" fill="#86efac"/>
+              <rect x="22" y="10" width="10" height="22" rx="3" fill="#4f8cff" opacity="0.9"/>
+              <path d="M10 30 L16 24 L10 18" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div>
+            <div class="label">Slower</div>
+            <div class="desc">Slowest xfade (recommended)</div>
+          </div>
+        </div>
+        <div class="speed-chip" data-speed="fast">
+          <div style="width:42px;height:42px;">
+            <svg width="42" height="42" viewBox="0 0 42 42">
+              <rect x="8" y="10" width="10" height="22" rx="3" fill="#fbbf24"/>
+              <rect x="22" y="10" width="10" height="22" rx="3" fill="#f472b6" opacity="0.95"/>
+              <path d="M23 30 L17 24 L23 18" stroke="#ffffff" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <div>
+            <div class="label">Fast</div>
+            <div class="desc">Snappier cuts</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="music-preview">
+        <button id="musicPlayBtn" class="play-btn" type="button" disabled>Play Music Preview</button>
+        <audio id="musicPreviewAudio" preload="metadata"></audio>
+        <div id="musicMeta" class="music-meta muted">Select a music track to preview.</div>
       </div>
       <div id="status" class="status muted"></div>
     </div>
@@ -68,10 +208,61 @@
     const statusEl = document.getElementById("status");
     const genBtn = document.getElementById("generateBtn");
     const musicSel = document.getElementById("musicTrack");
+    const transitionTypeSel = document.getElementById("transitionType");
+    const transitionSpeedSel = document.getElementById("transitionSpeed");
+    const musicPlayBtn = document.getElementById("musicPlayBtn");
+    const musicPreviewAudio = document.getElementById("musicPreviewAudio");
+    const musicMeta = document.getElementById("musicMeta");
     const resultEl = document.getElementById("result");
     const outVideo = document.getElementById("outVideo");
     const meta = document.getElementById("meta");
     let orderedFiles = [];
+    let captionsState = [];
+    let tracksList = [];
+    let firstTrackId = null;
+
+    function toStaticMusicUrl(trackId) {
+      // trackId is posix path under /music (e.g. "a/b/c.mp3")
+      const safe = String(trackId || "");
+      const parts = safe.split("/").map(encodeURIComponent);
+      return "/music/" + parts.join("/");
+    }
+
+    function updateSpeedPreview() {
+      const raw = (transitionSpeedSel.value || "default").toString();
+      const activeSpeed = raw === "auto" ? "default" : raw;
+      const chips = Array.from(document.querySelectorAll("#speedPreview .speed-chip"));
+      chips.forEach(ch => {
+        const ds = ch.dataset.speed;
+        ch.classList.toggle("active", ds === activeSpeed);
+      });
+    }
+
+    function updateMusicPreview() {
+      const v = musicSel.value || "__auto__";
+      musicPreviewAudio.pause();
+      musicPlayBtn.textContent = "Play Music Preview";
+
+      if (v === "__none__") {
+        musicPreviewAudio.removeAttribute("src");
+        musicMeta.textContent = "Music: None";
+        musicPlayBtn.disabled = true;
+        return;
+      }
+
+      const trackId = v === "__auto__" ? firstTrackId : v;
+      if (!trackId) {
+        musicPreviewAudio.removeAttribute("src");
+        musicMeta.textContent = "Music: Auto (no preview available)";
+        musicPlayBtn.disabled = true;
+        return;
+      }
+
+      musicPreviewAudio.src = toStaticMusicUrl(trackId);
+      musicMeta.textContent = `Music preview: ${trackId}`;
+      musicPlayBtn.disabled = false;
+      musicPreviewAudio.currentTime = 0;
+    }
 
     async function loadTracks() {
       musicSel.innerHTML = "";
@@ -86,13 +277,16 @@
       try {
         const r = await fetch("/api/music-tracks");
         const j = await r.json();
-        for (const t of (j.tracks || [])) {
+        tracksList = j.tracks || [];
+        firstTrackId = tracksList.length ? (tracksList[0].id || tracksList[0].path || "") : null;
+        for (const t of tracksList) {
           const opt = document.createElement("option");
-          opt.value = t.path;
-          opt.textContent = `Music: ${t.path}`;
+          opt.value = t.id;
+          opt.textContent = `Music: ${t.label || t.id}`;
           musicSel.appendChild(opt);
         }
       } catch (_) {}
+      updateMusicPreview();
     }
 
     function renderItems() {
@@ -114,8 +308,28 @@
               <div class="muted" style="margin-bottom:8px;">${idx + 1}. ${f.name}</div>
               <textarea data-caption-index="${idx}" placeholder="Caption for this item..."></textarea>
             </div>
+            <div style="display:flex; align-items:flex-start;">
+              <button type="button" class="remove-btn" title="Remove this item">Remove</button>
+            </div>
           </div>
         `;
+        const capTa = card.querySelector(`textarea[data-caption-index="${idx}"]`);
+        if (capTa) capTa.value = captionsState[idx] || "";
+        if (capTa) {
+          capTa.addEventListener("input", () => {
+            captionsState[idx] = capTa.value || "";
+          });
+        }
+
+        const removeBtn = card.querySelector(".remove-btn");
+        if (removeBtn) {
+          removeBtn.addEventListener("click", () => {
+            orderedFiles.splice(idx, 1);
+            captionsState.splice(idx, 1);
+            renderItems();
+          });
+        }
+
         card.addEventListener("dragstart", (e) => {
           card.classList.add("dragging");
           e.dataTransfer.setData("text/plain", String(idx));
@@ -133,30 +347,19 @@
           const from = Number(e.dataTransfer.getData("text/plain"));
           const to = Number(card.dataset.index);
           if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
-          const caps = getCaptionsByIndex();
           const [movedFile] = orderedFiles.splice(from, 1);
           orderedFiles.splice(to, 0, movedFile);
-          const [movedCap] = caps.splice(from, 1);
-          caps.splice(to, 0, movedCap);
+          const [movedCap] = captionsState.splice(from, 1);
+          captionsState.splice(to, 0, movedCap);
           renderItems();
-          applyCaptions(caps);
         });
         itemsEl.appendChild(card);
       });
     }
 
-    function getCaptionsByIndex() {
-      const nodes = Array.from(document.querySelectorAll("textarea[data-caption-index]"));
-      return nodes.map(t => t.value || "");
-    }
-
-    function applyCaptions(captions) {
-      const nodes = Array.from(document.querySelectorAll("textarea[data-caption-index]"));
-      nodes.forEach((n, i) => { n.value = captions[i] || ""; });
-    }
-
     filesInput.addEventListener("change", () => {
       orderedFiles = Array.from(filesInput.files || []);
+      captionsState = orderedFiles.map(() => "");
       renderItems();
     });
 
@@ -172,12 +375,13 @@
       statusEl.className = "status muted";
       statusEl.textContent = "Generating reel...";
       try {
-        const capNodes = Array.from(document.querySelectorAll("textarea[data-caption-index]"));
-        const captions = capNodes.map(t => t.value || "");
+        const captions = captionsState.slice(0, orderedFiles.length);
         const fd = new FormData();
         files.forEach(f => fd.append("files", f));
         fd.append("captions_json", JSON.stringify(captions));
         fd.append("music_track_id", musicSel.value || "__auto__");
+        fd.append("transition_type", transitionTypeSel.value || "auto");
+        fd.append("transition_speed", transitionSpeedSel.value || "auto");
         const res = await fetch("/api/upload-reel/generate", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
@@ -195,6 +399,38 @@
       }
     });
 
+    musicSel.addEventListener("change", () => {
+      updateMusicPreview();
+    });
+
+    musicPlayBtn.addEventListener("click", async () => {
+      try {
+        if (musicPreviewAudio.paused) {
+          await musicPreviewAudio.play();
+          musicPlayBtn.textContent = "Pause Music Preview";
+        } else {
+          musicPreviewAudio.pause();
+          musicPlayBtn.textContent = "Play Music Preview";
+        }
+      } catch (_) {
+        musicMeta.textContent = "Could not play preview in this browser.";
+      }
+    });
+
+    transitionSpeedSel.addEventListener("change", () => {
+      updateSpeedPreview();
+    });
+
+    Array.from(document.querySelectorAll("#speedPreview .speed-chip")).forEach(ch => {
+      ch.addEventListener("click", () => {
+        const ds = ch.dataset.speed;
+        if (!ds) return;
+        transitionSpeedSel.value = ds;
+        updateSpeedPreview();
+      });
+    });
+
+    updateSpeedPreview();
     loadTracks();
   </script>
 </body>
