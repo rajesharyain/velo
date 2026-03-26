@@ -99,6 +99,15 @@
       <h2 style="margin:0 0 10px;">Generate Reel from Images/Videos</h2>
       <div class="muted">Upload files, add one caption per item, then generate a 9:16 reel with FFmpeg.</div>
       <div class="muted" style="margin-top:6px;">Tip: drag and drop items below to reorder reel sequence.</div>
+      <div style="margin-top:1rem;">
+        <label for="themeInput" class="muted" style="display:block; font-weight:700; margin-bottom:6px;">Theme (Groq → Pexels media download)</label>
+        <textarea id="themeInput" placeholder="e.g. beautiful coastal cities in Portugal" required></textarea>
+        <div class="row" style="margin-top:10px;">
+          <button id="autoFillBtn" type="button">Download from Pexels</button>
+          <span class="muted">Pre-fills items; you can remove/replace before generating.</span>
+        </div>
+        <div id="autofillStatus" class="status muted"></div>
+      </div>
       <div class="row" style="margin-top:12px;">
         <input id="mediaFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm" multiple />
         <select id="musicTrack"></select>
@@ -207,6 +216,9 @@
     const itemsEl = document.getElementById("items");
     const statusEl = document.getElementById("status");
     const genBtn = document.getElementById("generateBtn");
+    const themeInput = document.getElementById("themeInput");
+    const autoFillBtn = document.getElementById("autoFillBtn");
+    const autofillStatus = document.getElementById("autofillStatus");
     const musicSel = document.getElementById("musicTrack");
     const transitionTypeSel = document.getElementById("transitionType");
     const transitionSpeedSel = document.getElementById("transitionSpeed");
@@ -216,10 +228,17 @@
     const resultEl = document.getElementById("result");
     const outVideo = document.getElementById("outVideo");
     const meta = document.getElementById("meta");
-    let orderedFiles = [];
-    let captionsState = [];
+    let itemsState = []; // {source:'server'|'upload', kind:'image'|'video', asset_id?:string, file?:File, web_url?:string, caption:string}
     let tracksList = [];
     let firstTrackId = null;
+
+    function detectKindFromFile(file) {
+      const n = (file && file.name) ? String(file.name).toLowerCase() : "";
+      const t = (file && file.type) ? String(file.type).toLowerCase() : "";
+      const videoByType = t.startsWith("video/");
+      const videoByExt = [".mp4", ".mov", ".m4v", ".webm"].some(ext => n.endsWith(ext));
+      return videoByType || videoByExt ? "video" : "image";
+    }
 
     function toStaticMusicUrl(trackId) {
       // trackId is posix path under /music (e.g. "a/b/c.mp3")
@@ -291,13 +310,13 @@
 
     function renderItems() {
       itemsEl.innerHTML = "";
-      orderedFiles.forEach((f, idx) => {
+      itemsState.forEach((it, idx) => {
         const card = document.createElement("div");
         card.className = "item";
         card.draggable = true;
         card.dataset.index = String(idx);
-        const url = URL.createObjectURL(f);
-        const isVideo = f.type.startsWith("video/");
+        const isVideo = it.kind === "video";
+        const url = it.source === "server" ? it.web_url : URL.createObjectURL(it.file);
         card.innerHTML = `
           <div class="preview-wrap">
             ${isVideo
@@ -305,7 +324,11 @@
               : `<img class="thumb" src="${url}" alt="upload preview" />`
             }
             <div style="flex:1;">
-              <div class="muted" style="margin-bottom:8px;">${idx + 1}. ${f.name}</div>
+              <div class="muted" style="margin-bottom:8px;">${idx + 1}. ${
+                it.source === "server"
+                  ? (it.name || (isVideo ? "Pexels video" : "Pexels image"))
+                  : it.file.name
+              }</div>
               <textarea data-caption-index="${idx}" placeholder="Caption for this item..."></textarea>
             </div>
             <div style="display:flex; align-items:flex-start;">
@@ -314,18 +337,18 @@
           </div>
         `;
         const capTa = card.querySelector(`textarea[data-caption-index="${idx}"]`);
-        if (capTa) capTa.value = captionsState[idx] || "";
+        if (capTa) capTa.value = it.caption || "";
         if (capTa) {
           capTa.addEventListener("input", () => {
-            captionsState[idx] = capTa.value || "";
+            itemsState[idx].caption = capTa.value || "";
           });
         }
 
         const removeBtn = card.querySelector(".remove-btn");
         if (removeBtn) {
           removeBtn.addEventListener("click", () => {
-            orderedFiles.splice(idx, 1);
-            captionsState.splice(idx, 1);
+            itemsState.splice(idx, 1);
+            resultEl.style.display = "none";
             renderItems();
           });
         }
@@ -347,10 +370,8 @@
           const from = Number(e.dataTransfer.getData("text/plain"));
           const to = Number(card.dataset.index);
           if (Number.isNaN(from) || Number.isNaN(to) || from === to) return;
-          const [movedFile] = orderedFiles.splice(from, 1);
-          orderedFiles.splice(to, 0, movedFile);
-          const [movedCap] = captionsState.splice(from, 1);
-          captionsState.splice(to, 0, movedCap);
+          const [movedItem] = itemsState.splice(from, 1);
+          itemsState.splice(to, 0, movedItem);
           renderItems();
         });
         itemsEl.appendChild(card);
@@ -358,16 +379,26 @@
     }
 
     filesInput.addEventListener("change", () => {
-      orderedFiles = Array.from(filesInput.files || []);
-      captionsState = orderedFiles.map(() => "");
+      const newFiles = Array.from(filesInput.files || []);
+      if (!newFiles.length) return;
+      newFiles.forEach((f) => {
+        itemsState.push({
+          source: "upload",
+          file: f,
+          kind: detectKindFromFile(f),
+          caption: "",
+          name: f.name,
+        });
+      });
+      filesInput.value = "";
+      resultEl.style.display = "none";
       renderItems();
     });
 
     genBtn.addEventListener("click", async () => {
-      const files = orderedFiles;
-      if (!files.length) {
+      if (!itemsState.length) {
         statusEl.className = "status err";
-        statusEl.textContent = "Please upload at least one file.";
+        statusEl.textContent = "Please add at least one media item.";
         return;
       }
       genBtn.disabled = true;
@@ -375,10 +406,29 @@
       statusEl.className = "status muted";
       statusEl.textContent = "Generating reel...";
       try {
-        const captions = captionsState.slice(0, orderedFiles.length);
+        const uploads = [];
+        const itemsJson = [];
+        for (const it of itemsState) {
+          if (it.source === "upload") {
+            const upIndex = uploads.length;
+            uploads.push(it.file);
+            itemsJson.push({
+              source: "upload",
+              upload_index: upIndex,
+              caption: it.caption || "",
+            });
+          } else {
+            itemsJson.push({
+              source: "server",
+              asset_id: it.asset_id,
+              caption: it.caption || "",
+            });
+          }
+        }
+
         const fd = new FormData();
-        files.forEach(f => fd.append("files", f));
-        fd.append("captions_json", JSON.stringify(captions));
+        uploads.forEach(f => fd.append("files", f));
+        fd.append("items_json", JSON.stringify(itemsJson));
         fd.append("music_track_id", musicSel.value || "__auto__");
         fd.append("transition_type", transitionTypeSel.value || "auto");
         fd.append("transition_speed", transitionSpeedSel.value || "auto");
@@ -428,6 +478,54 @@
         transitionSpeedSel.value = ds;
         updateSpeedPreview();
       });
+    });
+
+    autoFillBtn.addEventListener("click", async () => {
+      const theme = (themeInput.value || "").trim();
+      if (!theme) {
+        autofillStatus.className = "status err";
+        autofillStatus.textContent = "Theme is required for auto-fill.";
+        return;
+      }
+
+      autoFillBtn.disabled = true;
+      autofillStatus.className = "status muted";
+      autofillStatus.textContent = "Downloading Pexels media (this can take a while)...";
+      statusEl.className = "status muted";
+      statusEl.textContent = "";
+
+      try {
+        const res = await fetch("/api/upload-reel/autofill", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ theme, max_items: 8, include_video: true }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+
+        const serverItems = data.items || [];
+        itemsState = serverItems.map((it) => ({
+          source: "server",
+          asset_id: it.asset_id,
+          kind: it.kind,
+          web_url: it.web_url,
+          caption: it.caption || "",
+          name: it.kind === "video" ? "Pexels video" : "Pexels image",
+        }));
+
+        filesInput.value = "";
+        outVideo.removeAttribute("src");
+        resultEl.style.display = "none";
+        renderItems();
+
+        autofillStatus.className = "status ok";
+        autofillStatus.textContent = `Loaded ${itemsState.length} items from Pexels.`;
+      } catch (err) {
+        autofillStatus.className = "status err";
+        autofillStatus.textContent = String(err && err.message ? err.message : err);
+      } finally {
+        autoFillBtn.disabled = false;
+      }
     });
 
     updateSpeedPreview();

@@ -26,6 +26,7 @@ from travel_instagram import config
 from travel_instagram import pipeline
 from travel_instagram import groq_service
 from travel_instagram import manual_reel_builder
+from travel_instagram import manual_reel_autofill
 from travel_instagram import mcp_reel_tool
 from travel_instagram import reels_catalog
 from travel_instagram.instagram_post_export import safe_carousel_run_dir
@@ -109,6 +110,12 @@ class McpReelBody(BaseModel):
         max_length=512,
         description="Relative path under music/ for audio, __none__ for silence, or null/__auto__ for automatic.",
     )
+
+
+class AutofillReelMediaBody(BaseModel):
+    theme: str = Field(..., min_length=1, max_length=500)
+    max_items: int = Field(default=8, ge=1, le=20)
+    include_video: bool = Field(default=True, description="Download portrait videos too.")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -211,45 +218,94 @@ async def api_mcp_reels_generate(body: McpReelBody) -> JSONResponse:
 
 @app.post("/api/upload-reel/generate")
 async def api_upload_reel_generate(
-    files: list[UploadFile] = File(...),
+    files: list[UploadFile] = File(default_factory=list),
     captions_json: str = Form(default="[]"),
+    items_json: str = Form(default=""),
     music_track_id: str | None = Form(default=None),
     transition_type: str = Form(default="auto"),
     transition_speed: str = Form(default="auto"),
 ) -> JSONResponse:
-    if not files:
-        raise HTTPException(status_code=400, detail="Upload at least one file.")
-
     if music_track_id == "__auto__":
         music_track_id = None
     if isinstance(music_track_id, str) and music_track_id.strip() == "":
         music_track_id = None
 
-    try:
-        parsed = json.loads(captions_json or "[]")
-        captions = [str(x or "") for x in parsed] if isinstance(parsed, list) else []
-    except json.JSONDecodeError as e:
-        raise HTTPException(status_code=400, detail="Invalid captions_json payload.") from e
+    base_autofill = config.OUTPUT_DIR / "manual_reels" / "autofill"
 
     allowed = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov", ".m4v", ".webm"}
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     temp_dir = config.OUTPUT_DIR / "manual_reels" / f"tmp_{ts}"
     temp_dir.mkdir(parents=True, exist_ok=True)
 
+    uploaded_paths: list[Path] = []
+    for i, up in enumerate(files):
+        suffix = Path(up.filename or "").suffix.lower()
+        if suffix not in allowed:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type '{suffix}' for '{up.filename}'.",
+            )
+        name = f"upload_{i:02d}_{Path(up.filename or 'asset').stem}{suffix}"
+        out = temp_dir / name
+        data = await up.read()
+        out.write_bytes(data)
+        uploaded_paths.append(out)
+
     media_paths: list[Path] = []
+    captions: list[str] = []
+
+    if items_json:
+        try:
+            parsed_items = json.loads(items_json)
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail="Invalid items_json payload.") from e
+        if not isinstance(parsed_items, list) or not parsed_items:
+            raise HTTPException(status_code=400, detail="items_json must be a non-empty list.")
+
+        for it in parsed_items:
+            if not isinstance(it, dict):
+                raise HTTPException(status_code=400, detail="items_json entries must be objects.")
+            src = str(it.get("source") or "").strip()
+            caption = str(it.get("caption") or "")
+            if src == "server":
+                asset_id = str(it.get("asset_id") or "").strip()
+                if not asset_id:
+                    raise HTTPException(status_code=400, detail="Missing asset_id for server item.")
+                cand = (base_autofill / asset_id).resolve()
+                try:
+                    cand.relative_to(base_autofill.resolve())
+                except ValueError as e:
+                    raise HTTPException(status_code=400, detail="Invalid asset_id path.") from e
+                if not cand.is_file():
+                    raise HTTPException(status_code=404, detail=f"Server asset not found: {asset_id}")
+                media_paths.append(cand)
+                captions.append(caption)
+            elif src == "upload":
+                upload_index = it.get("upload_index")
+                if upload_index is None:
+                    raise HTTPException(status_code=400, detail="Missing upload_index for upload item.")
+                if not isinstance(upload_index, int):
+                    raise HTTPException(status_code=400, detail="upload_index must be an integer.")
+                if upload_index < 0 or upload_index >= len(uploaded_paths):
+                    raise HTTPException(status_code=400, detail="upload_index out of range.")
+                media_paths.append(uploaded_paths[upload_index])
+                captions.append(caption)
+            else:
+                raise HTTPException(status_code=400, detail=f"Unknown item source: {src!r}")
+    else:
+        if not files:
+            raise HTTPException(status_code=400, detail="Upload at least one file or provide items_json.")
+        try:
+            parsed = json.loads(captions_json or "[]")
+            captions = [str(x or "") for x in parsed] if isinstance(parsed, list) else []
+        except json.JSONDecodeError as e:
+            raise HTTPException(status_code=400, detail="Invalid captions_json payload.") from e
+
+        media_paths = list(uploaded_paths)
+
     try:
-        for i, up in enumerate(files):
-            suffix = Path(up.filename or "").suffix.lower()
-            if suffix not in allowed:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file type '{suffix}' for '{up.filename}'.",
-                )
-            name = f"{i:02d}_{Path(up.filename or 'asset').stem}{suffix}"
-            out = temp_dir / name
-            data = await up.read()
-            out.write_bytes(data)
-            media_paths.append(out)
+        if not media_paths:
+            raise HTTPException(status_code=400, detail="No media items supplied.")
 
         res = await asyncio.to_thread(
             manual_reel_builder.build_manual_reel,
@@ -267,8 +323,31 @@ async def api_upload_reel_generate(
         raise
     except RuntimeError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
-    except Exception as e:
+    except Exception:
         logger.exception("Upload reel generation failed")
+        raise HTTPException(status_code=500, detail="Upload reel generation failed") from None
+
+
+@app.post("/api/upload-reel/autofill")
+async def api_upload_reel_autofill(body: AutofillReelMediaBody) -> JSONResponse:
+    theme = (body.theme or "").strip()
+    if not theme:
+        raise HTTPException(status_code=400, detail="theme is required.")
+
+    try:
+        res = await asyncio.to_thread(
+            manual_reel_autofill.autofill_media_for_theme,
+            theme,
+            max_items=body.max_items,
+            include_video=body.include_video,
+        )
+        return JSONResponse(content=res)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("Autofill failed")
         raise HTTPException(status_code=500, detail=str(e)) from e
 
 
