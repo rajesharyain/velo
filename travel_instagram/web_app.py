@@ -24,6 +24,8 @@ from starlette.templating import Jinja2Templates
 
 from travel_instagram import config
 from travel_instagram import pipeline
+from travel_instagram import groq_service
+from travel_instagram import mcp_reel_tool
 from travel_instagram import reels_catalog
 from travel_instagram.instagram_post_export import safe_carousel_run_dir
 from travel_instagram.instapost.router import router as instapost_router
@@ -93,6 +95,15 @@ class GenerateBody(BaseModel):
     )
 
 
+class McpReelBody(BaseModel):
+    prompt: str = Field(..., min_length=1, max_length=800)
+    music_track_id: str | None = Field(
+        default=None,
+        max_length=512,
+        description="Relative path under music/ for audio, __none__ for silence, or null/__auto__ for automatic.",
+    )
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -115,6 +126,68 @@ async def reels_page(request: Request) -> HTMLResponse:
             "nav_active": "reels",
         },
     )
+
+
+@app.get("/mcp-reels", response_class=HTMLResponse)
+async def mcp_reels_page(request: Request) -> HTMLResponse:
+    """Isolated UI for price reels via MCP tool."""
+    return templates.TemplateResponse(
+        "mcp_reels.html",
+        {
+            "request": request,
+            "title": "Price Reels",
+            "nav_active": "mcp_reels",
+        },
+    )
+
+
+@app.post("/api/mcp-reels/generate")
+async def api_mcp_reels_generate(body: McpReelBody) -> JSONResponse:
+    prompt = (body.prompt or "").strip()
+    if not prompt:
+        raise HTTPException(status_code=400, detail="Prompt is required.")
+
+    music_track_id = body.music_track_id
+    if music_track_id == "__auto__":
+        music_track_id = None
+    if isinstance(music_track_id, str) and music_track_id.strip() == "":
+        music_track_id = None
+
+    try:
+        refined: dict[str, Any] | None = None
+        try:
+            refined = await asyncio.to_thread(groq_service.parse_reel_prompt, prompt)
+        except Exception:
+            refined = None
+        refined_prompt = ((refined or {}).get("refined_prompt") or prompt).strip()
+        search_destination = (refined or {}).get("destination")
+        search_origin = (refined or {}).get("origin")
+        search_mode = (refined or {}).get("mode")
+        image_keywords = (refined or {}).get("image_keywords")
+        video_keywords = (refined or {}).get("video_keywords")
+
+        res = await asyncio.to_thread(
+            mcp_reel_tool.generate_travel_reel_from_prompt,
+            refined_prompt,
+            music_path=music_track_id,
+            search_destination=search_destination,
+            search_origin=search_origin,
+            search_mode=search_mode,
+            image_keywords=image_keywords,
+            video_keywords=video_keywords,
+        )
+
+        out = dict(res)
+        out["video_url"] = _to_media_url(out.get("output_path") or "") or None
+        out["refined"] = refined
+        return JSONResponse(content=out)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("MCP reel generation failed")
+        raise HTTPException(status_code=500, detail=str(e)) from e
 
 
 def _carousel_slides_media_urls(run_dir: Path) -> list[str]:

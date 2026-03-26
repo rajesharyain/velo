@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>{{ title }} — Velo</title>
+  <style>
+    :root {
+      --ig-top: 54px;
+      --font: "Segoe UI", system-ui, -apple-system, sans-serif;
+      --ig-blue: #0095f6;
+      --bg: rgba(0, 0, 0, 0.92);
+      --muted: rgba(255, 255, 255, 0.55);
+    }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      background: #000;
+      color: #f5f5f5;
+      font-family: var(--font);
+      line-height: 1.45;
+    }
+    .ig-top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: var(--ig-top);
+      padding: 0.5rem 0.75rem 0.6rem;
+      background: var(--bg);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .site-nav { display: flex; gap: 0.35rem; }
+    .nav-link {
+      color: rgba(255, 255, 255, 0.55);
+      text-decoration: none;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+      border: none;
+    }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active { color: #fff; background: rgba(255, 255, 255, 0.1); }
+    .wrap {
+      max-width: 880px;
+      margin: 0 auto;
+      padding: 2rem 1.25rem 4rem;
+    }
+    h1 { font-size: 1.65rem; font-weight: 600; margin: 0 0 0.35rem; letter-spacing: -0.02em; }
+    .sub { color: rgba(255,255,255,0.55); margin-bottom: 1.5rem; }
+    textarea {
+      width: 100%;
+      min-height: 92px;
+      padding: 0.85rem 1rem;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(26,35,50,0.9);
+      color: #fff;
+      font-family: inherit;
+      font-size: 1rem;
+      resize: vertical;
+    }
+    textarea:focus {
+      outline: none;
+      border-color: rgba(0,149,246,0.9);
+      box-shadow: 0 0 0 3px rgba(0,149,246,0.25);
+    }
+    select.music-select {
+      width: 100%;
+      padding: 0.65rem 1rem;
+      border-radius: 10px;
+      border: 1px solid rgba(255,255,255,0.12);
+      background: rgba(26,35,50,0.9);
+      color: #fff;
+      font-family: inherit;
+      font-size: 1rem;
+      cursor: pointer;
+    }
+    button {
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 650;
+      padding: 0.75rem 1.35rem;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      background: linear-gradient(180deg, var(--ig-blue) 0%, #0077cc 100%);
+      color: #fff;
+      box-shadow: 0 2px 12px rgba(0,149,246,0.35);
+    }
+    button:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+    .row { display: flex; gap: 0.75rem; align-items: center; flex-wrap: wrap; margin-top: 1rem; }
+    .hint { font-size: 0.85rem; color: rgba(255,255,255,0.55); }
+    .panel {
+      margin-top: 1.25rem;
+      padding: 1.25rem 1.35rem;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      background: rgba(255,255,255,0.04);
+    }
+    #error-panel { display: none; }
+    #error-panel.visible { display: block; }
+    #result-panel { display: none; }
+    #result-panel.visible { display: block; }
+    .spinner {
+      display: inline-block;
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      vertical-align: -2px;
+      margin-right: 0.35rem;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .links a { color: #bfe5ff; text-decoration: none; }
+    .links a:hover { text-decoration: underline; }
+    video { width: 100%; max-width: 760px; border-radius: 12px; margin-top: 1rem; border: 1px solid rgba(255,255,255,0.1); }
+    #out-video {
+      aspect-ratio: 9 / 16;
+      width: 100%;
+      height: auto;
+      object-fit: cover;
+      max-height: 78dvh;
+    }
+  </style>
+</head>
+
+<body>
+  <header class="ig-top">
+    {% include "_nav.html" %}
+  </header>
+
+  <div class="wrap">
+    <h1>{{ title }}</h1>
+    <p class="sub">Enter a natural-language reel prompt. Groq refines it, then we pull prices from Excel, download media from Pexels, and assemble the reel with FFmpeg.</p>
+
+    <form id="form" action="#" method="post">
+      <label for="prompt">Prompt</label>
+      <textarea id="prompt" name="prompt" placeholder="Beautiful destination Paris, now fly at" required></textarea>
+
+      <label for="music-track" style="display:block;margin-top:1rem;">Background music</label>
+      <select id="music-track" class="music-select" name="music_track" aria-label="Background music">
+        <option value="__auto__">Automatic (.env REEL_MUSIC_PATH or first file in music/)</option>
+        <option value="__none__">No background music</option>
+      </select>
+
+      <div class="row">
+        <button type="submit" id="submit">Generate price reel</button>
+        <span class="hint">Requires `GROQ_API_KEY`, `PEXELS_API_KEY`, and FFmpeg.</span>
+      </div>
+    </form>
+
+    <p class="hint" id="status" hidden></p>
+
+    <div class="panel" id="error-panel">
+      <h2 style="margin:0 0 0.5rem;">Something went wrong</h2>
+      <p id="error-msg"></p>
+    </div>
+
+    <div class="panel" id="result-panel">
+      <h2 style="margin:0 0 0.75rem;">Done</h2>
+      <p class="hint" id="run-meta"></p>
+      <div class="row" style="margin-top:1rem;">
+        <a id="link-video" href="#" target="_blank" rel="noopener" style="display:none;">Open MP4</a>
+      </div>
+      <div id="preview-wrap" style="display:none;">
+        <video id="out-video" controls playsinline preload="metadata"></video>
+      </div>
+      <div class="panel" id="meta-panel" style="margin-top:1rem;">
+        <pre id="out-json" style="white-space:pre-wrap; word-break:break-word; margin:0; font-size:0.85rem;"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("form");
+    const promptEl = document.getElementById("prompt");
+    const submitBtn = document.getElementById("submit");
+    const statusEl = document.getElementById("status");
+    const errorPanel = document.getElementById("error-panel");
+    const errorMsg = document.getElementById("error-msg");
+    const resultPanel = document.getElementById("result-panel");
+    const runMeta = document.getElementById("run-meta");
+    const outVideo = document.getElementById("out-video");
+    const linkVideo = document.getElementById("link-video");
+    const previewWrap = document.getElementById("preview-wrap");
+    const outJson = document.getElementById("out-json");
+    const musicSelect = document.getElementById("music-track");
+
+    async function loadMusicTracks() {
+      try {
+        const res = await fetch("/api/music-tracks");
+        if (!res.ok) return;
+        const data = await res.json();
+        const tracks = data.tracks || [];
+        musicSelect.innerHTML = "";
+
+        const auto = document.createElement("option");
+        auto.value = "__auto__";
+        auto.textContent = "Automatic (.env REEL_MUSIC_PATH or first file in music/)";
+        musicSelect.appendChild(auto);
+
+        const none = document.createElement("option");
+        none.value = "__none__";
+        none.textContent = "No background music";
+        musicSelect.appendChild(none);
+
+        tracks.forEach((t) => {
+          const o = document.createElement("option");
+          o.value = t.id;
+          o.textContent = t.label || t.id;
+          musicSelect.appendChild(o);
+        });
+      } catch (_) { /* ignore */ }
+    }
+    loadMusicTracks();
+
+    function hidePanels() {
+      errorPanel.classList.remove("visible");
+      resultPanel.classList.remove("visible");
+    }
+
+    function showError(msg) {
+      hidePanels();
+      errorMsg.textContent = msg || "Request failed";
+      errorPanel.classList.add("visible");
+    }
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const prompt = promptEl.value.trim();
+      if (!prompt) return;
+
+      hidePanels();
+      statusEl.hidden = false;
+      statusEl.innerHTML = '<span class="spinner"></span>Generating… this can take a few minutes.';
+      submitBtn.disabled = true;
+
+      try {
+        let musicTrackId = musicSelect.value;
+        if (musicTrackId === "__auto__") {
+          musicTrackId = null;
+        }
+        const res = await fetch("/api/mcp-reels/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt, music_track_id: musicTrackId }),
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          showError(data.detail || data.error || res.statusText);
+          return;
+        }
+
+        statusEl.hidden = true;
+        resultPanel.classList.add("visible");
+        runMeta.textContent = "MP4 generated";
+
+        const url = data.video_url;
+        outVideo.src = url || "";
+        previewWrap.style.display = url ? "block" : "none";
+
+        linkVideo.style.display = url ? "inline-block" : "none";
+        linkVideo.href = url || "#";
+
+        outJson.textContent = JSON.stringify(data, null, 2);
+      } catch (err) {
+        showError(err?.message || "Request failed");
+      } finally {
+        submitBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
+

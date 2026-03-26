@@ -176,3 +176,105 @@ def generate_travel_content(theme: str, api_key: str | None = None) -> dict[str,
         raise RuntimeError("Groq response was not valid JSON.") from e
 
     return _validate_and_trim(parsed, theme.strip())
+
+
+_REEL_PARSE_SYSTEM_PROMPT = """You are a travel reel prompt refiner.
+
+You must output ONLY valid JSON (no markdown) with this exact schema:
+{
+  "destination": "string",
+  "origin": "string or null",
+  "mode": "flight|airport|walking|road|train",
+  "image_keywords": "string",
+  "video_keywords": "string",
+  "refined_prompt": "string"
+}
+
+Rules:
+- destination: extract the main city/region name from the user prompt.
+- origin: extract the "from X" city/country if present, otherwise (also accept "at X") otherwise null.
+- mode:
+  - airport if the prompt mentions airport or boarding
+  - flight if it mentions fly/flying/airplane/plane/clouds (window view is okay)
+  - walking if it mentions walk/walking/streets
+  - road if it mentions car/road trip
+  - train if it mentions train
+  If none mentioned, guess based on vibe words; default to flight.
+- refined_prompt must be a natural sentence that includes destination, origin (if any),
+  and mode keywords so downstream parsing works.
+
+- image_keywords: 3–6 concrete visual keywords for Pexels *images* (landmarks/nature/weather/city scenes)
+  that are strongly tied to destination + mode.
+- video_keywords: 3–6 concrete visual keywords for Pexels *videos* that describe motion/scene type
+  (e.g., "drone coastline", "airport walking luggage", "rainy street walk", "airplane window clouds")
+
+IMPORTANT for keywords:
+- Do NOT include specific place names (no city/country names) in image_keywords/video_keywords.
+- Keep keywords generic visual concepts only.
+
+IMPORTANT: If origin exists, include the phrase "from <origin>" (do not use "at <origin>").
+  If origin is missing, omit "from".
+
+  Example:
+  "Beautiful destination Paris, from Faro, now fly through the clouds in vertical reel style."
+"""
+
+
+def parse_reel_prompt(prompt: str, api_key: str | None = None) -> dict[str, Any]:
+    """
+    Use Groq to refine a natural-language reel prompt into structured fields:
+    destination, origin, and mode (+ a refined_prompt string).
+    """
+    key = api_key or config.GROQ_API_KEY
+    if not key:
+        raise RuntimeError("GROQ_API_KEY is not set.")
+
+    from groq import Groq  # local import to keep module init light
+
+    client = Groq(api_key=key)
+    completion = client.chat.completions.create(
+        model=config.GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": _REEL_PARSE_SYSTEM_PROMPT},
+            {"role": "user", "content": prompt.strip()},
+        ],
+        temperature=0.25,
+        max_tokens=300,
+        response_format={"type": "json_object"},
+    )
+
+    raw = completion.choices[0].message.content or ""
+    parsed = _extract_json_object(raw)
+
+    destination = str(parsed.get("destination") or "").strip()
+    if not destination:
+        raise RuntimeError("Groq did not return a destination.")
+
+    origin = parsed.get("origin")
+    if origin is not None:
+        origin = str(origin).strip()
+        if not origin:
+            origin = None
+
+    mode = str(parsed.get("mode") or "flight").strip().lower()
+    if mode not in ("flight", "airport", "walking", "road", "train"):
+        mode = "flight"
+
+    refined_prompt = str(parsed.get("refined_prompt") or prompt).strip()
+
+    image_keywords = str(parsed.get("image_keywords") or "").strip()
+    video_keywords = str(parsed.get("video_keywords") or "").strip()
+
+    if not image_keywords:
+        image_keywords = "landmarks attractions city skyline scenic view"
+    if not video_keywords:
+        video_keywords = "cinematic travel motion vertical"
+
+    return {
+        "destination": destination,
+        "origin": origin,
+        "mode": mode,
+        "refined_prompt": refined_prompt,
+        "image_keywords": image_keywords,
+        "video_keywords": video_keywords,
+    }

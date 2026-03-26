@@ -21,11 +21,15 @@ GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 # Optional reel soundtrack (used when no track is chosen in the UI / CLI)
 REEL_MUSIC_PATH: str | None = os.getenv("REEL_MUSIC_PATH")
 
+# MCP reel generator: Excel with destination/origin/prices
+TRAVEL_PRICES_EXCEL_PATH: str | None = os.getenv("TRAVEL_PRICES_EXCEL_PATH")
+
 # Project paths
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 MUSIC_LIBRARY_DIR = PROJECT_ROOT / "music"
 MUSIC_AUDIO_EXTENSIONS = frozenset({".mp3", ".m4a", ".wav", ".aac", ".flac", ".ogg"})
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", PROJECT_ROOT / "output")).resolve()
+MCP_REELS_DIR = OUTPUT_DIR / "mcp_reels"
 CAROUSEL_DIR = OUTPUT_DIR / "carousel"
 REELS_DIR = OUTPUT_DIR / "reels"
 
