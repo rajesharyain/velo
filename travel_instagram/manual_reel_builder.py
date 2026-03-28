@@ -18,9 +18,13 @@ from travel_instagram import media_processor
 
 logger = logging.getLogger(__name__)
 
-# Rounded panel: only drawn when caption_text (on-reel blurb) is non-empty. Set to None to disable the panel everywhere.
-# Alpha ~115 ≈ 45% opacity; tune 4th value 0–255 for more/less transparent.
-CAPTION_OVERLAY_PANEL_RGBA: tuple[int, int, int, int] | None = (8, 12, 22, 115)
+# Rounded panel behind caption_text (on-reel blurb). None = off; caption uses drop shadow for readability instead.
+CAPTION_OVERLAY_PANEL_RGBA: tuple[int, int, int, int] | None = None
+
+# Opening-hook overlay: location word(s) from hint highlighted in yellow; ALL-CAPS emphasis; drop shadows.
+_HOOK_FILL_WHITE = (255, 255, 255, 255)
+_HOOK_FILL_YELLOW = (255, 234, 60, 255)
+_HOOK_SHADOW_RGBA = (0, 0, 0, 150)
 
 # Default text anchor for manual reels (horizontal center, ~15% from top).
 DEFAULT_OVERLAY_ANCHOR: tuple[float, float] = (0.5, 0.15)
@@ -387,6 +391,225 @@ def _wrap_words_to_lines(
     return lines[:max_lines]
 
 
+def _hook_location_keywords(hint: str) -> set[str]:
+    """Lowercase keys from clip title (e.g. \"Porto, Portugal\") to match in hook text."""
+    if not (hint or "").strip():
+        return set()
+    keys: set[str] = set()
+    h = hint.split("—")[0].strip()
+    for chunk in h.split(","):
+        chunk = chunk.strip()
+        if not chunk:
+            continue
+        keys.add(chunk.lower())
+        for w in chunk.split():
+            wl = w.strip().lower()
+            if len(wl) >= 2:
+                keys.add(wl)
+    return keys
+
+
+def _hook_fragment_style(fragment: str, loc_keys: set[str]) -> str:
+    """Return style key: normal | location | shout."""
+    if not fragment.strip():
+        return "normal"
+    wstrip = fragment.strip()
+    core = wstrip.strip(".,!?;:…\"'").lower()
+    if core and core in loc_keys:
+        return "location"
+    alpha = "".join(c for c in wstrip if c.isalpha())
+    if alpha and alpha.isupper() and len(alpha) >= 4:
+        return "shout"
+    return "normal"
+
+
+def _split_hook_preserve_space(text: str) -> list[str]:
+    parts = re.findall(r"\S+|\s+", (text or "").strip())
+    return parts if parts else []
+
+
+def _hook_token_line_width(
+    draw: ImageDraw.ImageDraw,
+    line: list[tuple[str, str]],
+    fonts: Mapping[str, ImageFont.ImageFont],
+) -> int:
+    wsum = 0
+    for frag, sty in line:
+        f = fonts[sty]
+        bb = draw.textbbox((0, 0), frag, font=f)
+        wsum += bb[2] - bb[0]
+    return wsum
+
+
+def _wrap_hook_lines(
+    draw: ImageDraw.ImageDraw,
+    fragments: list[str],
+    loc_keys: set[str],
+    fonts: Mapping[str, ImageFont.ImageFont],
+    max_w: int,
+    max_lines: int,
+) -> list[list[tuple[str, str]]]:
+    typed: list[tuple[str, str]] = [(f, _hook_fragment_style(f, loc_keys)) for f in fragments]
+    lines: list[list[tuple[str, str]]] = []
+    cur: list[tuple[str, str]] = []
+    cur_w = 0
+
+    def flush() -> None:
+        nonlocal cur, cur_w
+        if cur:
+            lines.append(cur)
+        cur = []
+        cur_w = 0
+
+    for frag, sty in typed:
+        is_space_only = frag.isspace()
+        f = fonts[sty]
+        bb = draw.textbbox((0, 0), frag, font=f)
+        frag_w = bb[2] - bb[0]
+        if is_space_only and not cur:
+            continue
+        if cur_w + frag_w <= max_w or not cur:
+            cur.append((frag, sty))
+            cur_w += frag_w
+            continue
+        if cur:
+            flush()
+            if is_space_only:
+                continue
+            cur.append((frag, sty))
+            cur_w = frag_w
+        else:
+            cur.append((frag, sty))
+            cur_w = frag_w
+        if len(lines) >= max_lines:
+            break
+    if cur and len(lines) < max_lines:
+        lines.append(cur)
+    return lines[:max_lines]
+
+
+def _try_hook_font(size: int) -> ImageFont.ImageFont:
+    """Bold display font for hook (matches title weight)."""
+    return _try_overlay_font_stack(_TITLE_FONT_STACK, size, system_bold_fallback=True)
+
+
+def _draw_text_with_drop_shadow(
+    draw: ImageDraw.ImageDraw,
+    xy: tuple[int, int],
+    text: str,
+    font: ImageFont.ImageFont,
+    fill: tuple[int, int, int, int],
+    *,
+    stroke_w: int,
+) -> None:
+    x, y = xy
+    for dx, dy in ((4, 4), (2, 2)):
+        draw.text(
+            (x + dx, y + dy),
+            text,
+            font=font,
+            fill=_HOOK_SHADOW_RGBA,
+            stroke_width=stroke_w + 1,
+            stroke_fill=(0, 0, 0, 200),
+        )
+    draw.text(
+        (x, y),
+        text,
+        font=font,
+        fill=fill,
+        stroke_width=stroke_w,
+        stroke_fill=(0, 0, 0, 230),
+    )
+
+
+def _render_hook_overlay_png(
+    out_png: Path,
+    hook_text: str,
+    location_hint: str,
+    *,
+    anchor_x: float,
+    anchor_y: float,
+    font_scale: float,
+    frame_w: int,
+    frame_h: int,
+) -> Path:
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    loc_keys = _hook_location_keywords(location_hint)
+    fs = max(0.6, min(1.7, float(font_scale)))
+    max_w = int(frame_w * 0.88)
+    line_gap = max(6, int(frame_h * 0.006))
+
+    sz_n = int(frame_h * 0.032 * fs)
+    sz_loc = int(frame_h * 0.052 * fs)
+    sz_sh = int(frame_h * 0.046 * fs)
+    fonts = {
+        "normal": _try_hook_font(sz_n),
+        "location": _try_hook_font(sz_loc),
+        "shout": _try_hook_font(sz_sh),
+    }
+
+    frags = _split_hook_preserve_space(hook_text)
+    if not frags:
+        _draw_reel_brand_badge(draw, frame_w, frame_h)
+        img.save(out_png)
+        return out_png
+
+    lines = _wrap_hook_lines(draw, frags, loc_keys, fonts, max_w, 6)
+    line_metrics: list[tuple[int, int]] = []
+    for line in lines:
+        asc = 0
+        desc = 0
+        for frag, sty in line:
+            f = fonts[sty]
+            bb = draw.textbbox((0, 0), frag, font=f)
+            asc = max(asc, -bb[1])
+            desc = max(desc, bb[3])
+        line_metrics.append((asc, desc))
+
+    block_h = sum(a + d for a, d in line_metrics) + max(0, len(lines) - 1) * line_gap
+    cx = float(anchor_x) * float(frame_w)
+    cy = float(anchor_y) * float(frame_h)
+    y_cursor = cy - block_h / 2.0
+
+    stroke_n = max(1, int(round(fs * 0.9)))
+    stroke_loc = max(2, int(round(fs * 1.25)))
+    stroke_sh = max(2, int(round(fs * 1.15)))
+
+    for li, line in enumerate(lines):
+        line_asc, line_desc = line_metrics[li]
+        total_w = _hook_token_line_width(draw, line, fonts)
+        x = cx - total_w / 2.0
+        baseline_y = y_cursor + line_asc
+        for frag, sty in line:
+            f = fonts[sty]
+            sw = stroke_loc if sty == "location" else (stroke_sh if sty == "shout" else stroke_n)
+            fill = _HOOK_FILL_YELLOW if sty == "location" else _HOOK_FILL_WHITE
+            bb0 = draw.textbbox((0, 0), frag, font=f)
+            y_draw = int(round(baseline_y + bb0[1]))
+            xd = int(round(x))
+            _draw_text_with_drop_shadow(draw, (xd, y_draw), frag, f, fill, stroke_w=sw)
+            bb = draw.textbbox((xd, y_draw), frag, font=f)
+            frag_w = bb[2] - bb[0]
+            if sty == "shout" and frag.strip() and not frag.isspace():
+                und_y = bb[3] + max(2, int(frame_h * 0.004))
+                und_h = max(3, int(frame_h * 0.005 * fs))
+                und_x0 = bb[0] - 2
+                und_x1 = bb[2] + 2
+                draw.rounded_rectangle(
+                    (und_x0, und_y, und_x1, und_y + und_h),
+                    radius=max(2, und_h // 2),
+                    fill=_HOOK_FILL_YELLOW,
+                )
+            x += frag_w
+        y_cursor += line_asc + line_desc + line_gap
+
+    _draw_reel_brand_badge(draw, frame_w, frame_h)
+    img.save(out_png)
+    return out_png
+
+
 def _render_caption_overlay(
     out_png: Path,
     caption: str,
@@ -396,6 +619,8 @@ def _render_caption_overlay(
     anchor_x: float = 0.5,
     anchor_y: float = 0.5,
     font_scale: float = 1.0,
+    hook_mode: bool = False,
+    hook_location_hint: str = "",
 ) -> Path:
     w, h = config.REEL_SIZE
     out_png.parent.mkdir(parents=True, exist_ok=True)
@@ -423,6 +648,18 @@ def _render_caption_overlay(
         _draw_reel_brand_badge(draw, w, h)
         img.save(out_png)
         return out_png
+
+    if hook_mode and body_t:
+        return _render_hook_overlay_png(
+            out_png,
+            body_t,
+            hook_location_hint,
+            anchor_x=anchor_x,
+            anchor_y=anchor_y,
+            font_scale=font_scale,
+            frame_w=w,
+            frame_h=h,
+        )
 
     # No location title: centered block(s) — optional place blurb + body
     if not title_t:
@@ -480,13 +717,13 @@ def _render_caption_overlay(
             bb = draw.textbbox((0, 0), ln, font=sub_font)
             tw = bb[2] - bb[0]
             tx = int(round((x0 + rect_w / 2.0) - tw / 2.0))
-            draw.text(
+            _draw_text_with_drop_shadow(
+                draw,
                 (tx, cy_line),
                 ln,
-                font=sub_font,
-                fill=(248, 250, 255, 255),
-                stroke_width=sub_stroke_strong,
-                stroke_fill=(0, 0, 0, 255),
+                sub_font,
+                (248, 250, 255, 255),
+                stroke_w=sub_stroke_strong,
             )
             cy_line += (bb[3] - bb[1]) + sub_line_gap
         if body_lines:
@@ -613,13 +850,13 @@ def _render_caption_overlay(
         for ln in sub_lines:
             bb = draw.textbbox((0, 0), ln, font=subtitle_font)
             tx = text_x0
-            draw.text(
+            _draw_text_with_drop_shadow(
+                draw,
                 (tx, cy_line),
                 ln,
-                font=subtitle_font,
-                fill=(248, 250, 255, 255),
-                stroke_width=sub_stroke_strong,
-                stroke_fill=(0, 0, 0, 255),
+                subtitle_font,
+                (248, 250, 255, 255),
+                stroke_w=sub_stroke_strong,
             )
             cy_line += (bb[3] - bb[1]) + sub_line_gap
 
@@ -904,6 +1141,8 @@ def build_manual_reel(
                     anchor_x=anchor[0],
                     anchor_y=anchor[1],
                     font_scale=fs,
+                    hook_mode=True,
+                    hook_location_hint=tit_i,
                 )
                 hook_part = reel_work / f"seg_{i:02d}_hook.mp4"
                 if _is_video(src):
