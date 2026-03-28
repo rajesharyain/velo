@@ -152,7 +152,8 @@ For EACH destination you MUST:
     beach, coastline, ocean, waterfront, harbor, boardwalk, tropical, island, mountains, alpine, volcano, forest, jungle, lake, river, waterfall, desert, canyon, countryside, vineyard, rice_terraces, savanna, glacier, city, skyline, night_skyline, historic_town, old_town, architecture, street_cafe, night_market, nightlife, rooftop_bar, temple, castle, palace, cathedral, historic_monument, ruins, museum, gallery, landmark, scenic_view, hiking_trail, road_trip, food_market, street_food, festival, parade, local_culture, winter_snow, spring_bloom, sunset_view
   - pexels_search_query: must reflect that row's attraction type with concrete English stock-search terms (e.g. monument facade columns, sandy beach turquoise water, city street neon night bar, crowded food market stalls, museum gallery visitors, traditional alley lanterns). Still include place name + country when known. 6 to 16 words. No hashtags.
   - vibe: one short phrase (max 18 words) describing mood and atmosphere for that row.
-  - caption: 20 to 40 words for that row (what the visitor experiences; mention the attraction type when relevant). The caption MUST name the real-world location for that media: include the same city and country (or region) as in this row’s "destination" field — ideally in the first sentence — so viewers know where the image/video applies.
+  - caption_text: ON-VIDEO line under the location title (Instagram Reels). MAXIMUM 12–15 words (strict). START with a strong hook: curiosity, emotion, or a punchy moment — make it scroll-stopping. Simple words, emotional pull; no long travel-guide prose, no hashtags. Must NOT copy "caption" verbatim; this is the short tease, "caption" is the longer line below.
+  - caption: 18 to 38 words. Supporting line under the blurb: what the visitor feels or does here; mention the attraction type when relevant. MUST name the real-world location: include the same city and country (or region) as this row’s "destination" — ideally in the first sentence.
 - hook: max 8 words, title for slide 1 (can nod to the main place or theme).
 - cta: max 10 words, final slide.
 - hashtags: 8 to 12 tags WITHOUT the # symbol in JSON.
@@ -173,7 +174,8 @@ Return this JSON shape (all fields required on each destination object):
   "destinations": [
     {{
       "destination": "City, Country — scene label OR City, Country for broad themes",
-      "caption": "20 to 40 words; must include city and country (or region) for this row",
+      "caption_text": "12–15 words max; opens with a hook; scroll-stopping, simple, emotional",
+      "caption": "18–38 words; location + experience; line below the blurb",
       "scape_types": ["historic_monument", "city", "landmark"],
       "vibe": "short mood and atmosphere phrase",
       "pexels_search_query": "place + distinct scene keywords for Pexels image/video search"
@@ -222,6 +224,14 @@ def base_location_label(destination: str) -> str:
     return _base_location_label(destination)
 
 
+def normalize_reel_caption_text(text: str, *, max_words: int = 15) -> str:
+    """Clamp on-reel blurb length (Instagram Reels caption_text)."""
+    words = (text or "").strip().split()
+    if not words:
+        return ""
+    return " ".join(words[: max(1, max_words)])
+
+
 def _ensure_caption_includes_location(caption: str, destination: str) -> str:
     """Prefix caption with the row's location when Groq omitted it (Pexels/download alignment)."""
     cap = (caption or "").strip()
@@ -254,6 +264,7 @@ def _dedupe_destinations(
         words = cap.split()
         if len(words) > 48:
             cap = " ".join(words[:48])
+        ctext = normalize_reel_caption_text(str(row.get("caption_text") or "").strip(), max_words=15)
         scape = _norm_scape_types(row.get("scape_types"))
         vibe = str(row.get("vibe", "")).strip()[:220]
         pq = str(row.get("pexels_search_query", "")).strip()[:300]
@@ -263,6 +274,7 @@ def _dedupe_destinations(
             {
                 "destination": name,
                 "caption": cap,
+                "caption_text": ctext,
                 "scape_types": scape,
                 "vibe": vibe,
                 "pexels_search_query": pq,

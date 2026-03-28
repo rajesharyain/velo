@@ -763,6 +763,7 @@ async def api_upload_reel_generate(
             ct_raw = str(it.get("caption_text") or "").strip()
             if it.get("show_caption_text") is False:
                 ct_raw = ""
+            ct_raw = groq_service.normalize_reel_caption_text(ct_raw, max_words=15)
             if len(ct_raw) > 420:
                 ct_raw = ct_raw[:420]
             overlay_x = it.get("overlay_x", 0.5)

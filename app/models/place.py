@@ -44,6 +44,9 @@ class PlaceInput(BaseModel):
         if v is None:
             return ""
         s = " ".join(str(v).split()).strip()
+        words = s.split()
+        if len(words) > 15:
+            s = " ".join(words[:15])
         return s[:420]
 
 

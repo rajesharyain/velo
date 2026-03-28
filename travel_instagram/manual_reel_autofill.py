@@ -84,6 +84,10 @@ def autofill_media_for_theme(
             caption_body = strip_leading_title_from_caption(full_caption, title).strip()
             if not caption_body:
                 caption_body = full_caption
+            caption_blurb = groq_service.normalize_reel_caption_text(
+                str(dest.get("caption_text") or "").strip(),
+                max_words=15,
+            )
 
             bundle = pexels_service.fetch_media_for_destination(
                 dest_name,
@@ -114,6 +118,7 @@ def autofill_media_for_theme(
                                 "web_url": _safe_media_url(out_path),
                                 "destination": dest_name,
                                 "title": title,
+                                "caption_text": caption_blurb,
                                 "caption": caption_body,
                             }
                         )
@@ -141,6 +146,7 @@ def autofill_media_for_theme(
                                     "web_url": _safe_media_url(out_path),
                                     "destination": dest_name,
                                     "title": title,
+                                    "caption_text": caption_blurb,
                                     "caption": caption_body,
                                 }
                             )
@@ -166,6 +172,7 @@ def autofill_media_for_theme(
                             "web_url": _safe_media_url(out_path),
                             "destination": dest_name,
                             "title": title,
+                            "caption_text": caption_blurb,
                             "caption": caption_body,
                         }
                     )
@@ -190,6 +197,7 @@ def autofill_media_for_theme(
                                 "web_url": _safe_media_url(out_path),
                                 "destination": dest_name,
                                 "title": title,
+                                "caption_text": caption_blurb,
                                 "caption": caption_body,
                             }
                         )

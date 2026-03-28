@@ -497,7 +497,7 @@
               <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Location (title on image)</label>
               <input type="text" data-title-index="${idx}" placeholder="e.g. Lisbon, Portugal" autocomplete="off" />
               <label class="muted" style="display:block;font-size:12px;margin:8px 0 4px;">Place blurb (under title — why it&apos;s famous / what it is)</label>
-              <textarea data-place-blurb-index="${idx}" rows="2" placeholder="Optional; e.g. Portugal&apos;s hilly coastal capital, known for trams and Belém."></textarea>
+              <textarea data-place-blurb-index="${idx}" rows="2" placeholder="On-reel blurb: 12–15 words, hook first — e.g. &quot;This view stops everyone in their tracks—Lisbon from above.&quot;"></textarea>
               <label style="display:flex;align-items:center;gap:8px;margin:6px 0 4px;font-size:12px;color:#9ca8bf;cursor:pointer;">
                 <input type="checkbox" data-show-blurb-index="${idx}" checked />
                 Show place blurb on reel
@@ -803,7 +803,7 @@
             web_url: it.web_url,
             destination: dest,
             title,
-            caption_text: "",
+            caption_text: String(it.caption_text != null ? it.caption_text : "").trim(),
             show_caption_text: true,
             caption: it.caption || "",
             name: dest || (it.kind === "video" ? "Pexels video" : "Pexels image"),

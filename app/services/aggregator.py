@@ -68,7 +68,7 @@ def _ensure_five_places(raw: list[dict]) -> list[PlaceInput]:
                 type="region",
                 highlights=["scenic views", "local culture", "landmarks"],
                 best_query=f"beautiful travel destination {n} aerial coastline",
-                caption_text="A scenic travel destination known for views, culture, and landmarks.",
+                caption_text="You won't believe how this place feels at golden hour.",
                 queries=[
                     f"destination {n} historic architecture",
                     f"destination {n} sunset waterfront",
