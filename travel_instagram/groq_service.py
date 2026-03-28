@@ -15,24 +15,155 @@ from travel_instagram import config
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a travel and tourism destination guide expert. You output ONLY valid JSON, no markdown.
+def infer_requested_destination_count(theme: str) -> int | None:
+    """
+    Parse phrases like "top 10 places in Portugal" or "5 places to visit in Madrid".
 
-Audience: Instagram travel guides — think vibes, scenery, and what a visitor actually sees.
+    Returns a positive int capped at DESTINATION_REQUEST_MAX, or None if no count found.
+    """
+    t = (theme or "").strip().lower()
+    patterns = (
+        r"\btop\s+(\d+)\b",
+        r"\bbest\s+(\d+)\s+places\b",
+        r"\b(\d+)\s+best\s+places\b",
+        r"\b(\d+)\s+places\s+to\s+visit\b",
+        r"\b(\d+)\s+places\s+in\b",
+        r"\bmust[\s-]see\s+(\d+)\b",
+    )
+    for pat in patterns:
+        m = re.search(pat, t)
+        if m:
+            n = int(m.group(1))
+            if n < 1:
+                continue
+            return min(n, config.DESTINATION_REQUEST_MAX)
+    return None
+
+
+def infer_geo_focus_from_theme(theme: str) -> str | None:
+    """
+    Extract geographic scope from phrases like "places to visit in Portugal",
+    "top 5 in Madrid", "beaches in the Algarve".
+
+    Used to force "Place, Country/City" labels and to enrich short Groq names
+    (e.g. "Lisbon" → "Lisbon, Portugal") when the theme names the parent region.
+    """
+    t = (theme or "").strip()
+    patterns = (
+        r"\bplaces\s+to\s+visit\s+in\s+([A-Za-z][A-Za-z\s'-]{1,56})",
+        r"\bplaces\s+in\s+([A-Za-z][A-Za-z\s'-]{1,56})(?:\s*$|\s*[,.]|\s+(?:to|for|and)\b)",
+        r"\bvisit\s+in\s+([A-Za-z][A-Za-z\s'-]{1,56})\s*$",
+        r"\b(?:around|across|throughout)\s+([A-Za-z][A-Za-z\s'-]{1,56})\s*$",
+        r"\btop\s+\d+\s+(?:places\s+)?(?:to\s+visit\s+)?in\s+([A-Za-z][A-Za-z\s'-]{1,56})",
+        r"\bin\s+([A-Za-z][A-Za-z\s'-]{1,56})\s*$",
+    )
+    for pat in patterns:
+        m = re.search(pat, t, re.IGNORECASE)
+        if m:
+            s = m.group(1).strip().rstrip(".,;")
+            if s.lower().startswith("the "):
+                s = s[4:].strip()
+            if 2 <= len(s) <= 56:
+                return s
+    return None
+
+
+def enrich_destination_label(destination: str, geo: str | None) -> str:
+    """
+    Append geographic scope when the model returned a short name only
+    (e.g. theme says 'in Portugal' but row is just 'Lisbon').
+    """
+    d = (destination or "").strip()
+    if not d or not geo:
+        return d
+    g = geo.strip()
+    if not g:
+        return d
+    if g.lower() in d.lower():
+        return d
+    if " — " in d:
+        left, _, right = d.partition(" — ")
+        left = left.strip()
+        right = right.strip()
+        if "," not in left and g.lower() not in left.lower():
+            left = f"{left}, {g}"
+        return f"{left} — {right}" if right else left
+    if "," not in d:
+        return f"{d}, {g}"
+    return d
+
+
+def _travel_system_prompt(dest_min: int, dest_max: int) -> str:
+    if dest_min == dest_max:
+        count_block = (
+            f"- Output EXACTLY {dest_max} destination rows — no more, no fewer. "
+            'For "top N places in [country/region/city]" style prompts, each row is one distinct ranked place, neighborhood, or must-see stop; '
+            "no duplicate or near-duplicate locations. Every pexels_search_query must name that specific spot plus country/region (English stock-search terms)."
+        )
+        single_place = (
+            "When the brief names ONE primary city/region and lists multiple shots OR implies N distinct stops:\n"
+            f"- Emit exactly {dest_max} rows total — one per scene or sub-place. If the user listed fewer than {dest_max} scenes, invent complementary distinct scenes or sub-areas for the same area until you reach {dest_max} rows.\n"
+            '- "destination" should be "City, Country — short scene label" when multiple rows share one city.\n'
+            "- pexels_search_query MUST include the real searchable place (city + country when known) PLUS concrete visuals for THAT row only. 6 to 16 words. No hashtags."
+        )
+        multi_place = (
+            f"When the brief is a ranked list or multi-place theme without a per-scene list, output exactly {dest_max} different places or major stops. "
+            "Each pexels_search_query combines that place + a DISTINCT attraction angle (monument, beach, nightlife, culture, activity, viewpoint, etc.)."
+        )
+    else:
+        count_block = (
+            f"- Output between {dest_min} and {dest_max} destination rows (inclusive). "
+            "Never exceed this range."
+        )
+        single_place = (
+            "When the brief names ONE primary place and lists MULTIPLE requested shots/scenes:\n"
+            f"- Emit one row per requested scene (up to {dest_max}). If fewer than {dest_min} scenes are listed, add complementary distinct scenes for the same place until you have at least {dest_min} rows.\n"
+            '- "destination" should be "City, Country — short scene label" (e.g. "Lisbon, Portugal — Tram 28") so rows stay unique.\n'
+            "- pexels_search_query MUST include the real searchable place (city + country when known) PLUS concrete visuals for THAT scene only. 6 to 16 words. No hashtags."
+        )
+        multi_place = (
+            f"When the brief is a broad multi-place theme (no explicit shot list), choose {dest_min} to {dest_max} different cities/regions; "
+            "each pexels_search_query combines place + a DISTINCT attraction angle (monument, beach, nightlife, culture, activity, etc.)."
+        )
+
+    return f"""You are a travel and tourism destination guide expert. You output ONLY valid JSON, no markdown.
+
+Audience: Instagram travel guides for content creators — prioritize what travelers actually seek: historic monuments and landmarks, beaches and coasts, nightlife (bars, clubs, rooftop views, neon streets), things to do (activities, tours, markets, promenades), local culture (museums, festivals, traditional quarters, food scenes), and other iconic attractions. Stock media on Pexels should read as recognizable travel B-roll, not generic "travel" filler.
+
+The user message may be a SHORT theme (e.g. "coastal Portugal") OR a LONGER media brief that names place(s) and asks for specific shots/scenes (e.g. "Lisbon — fetch images/video for yellow trams, Alfama alleys, sunset at Miradouro"). Treat instructions like "fetch", "get", "find", "Pexels", "stock" as: you must produce search queries that will retrieve matching stock media.
 
 Rules:
-- 3 to 5 unique destinations (no duplicate names or near-duplicates).
-- For EACH destination you MUST:
-  - Classify scenery using scape_types: pick 2 to 5 tags from this vocabulary (use exact wording where possible):
-    beach, coastline, ocean, tropical, island, mountains, alpine, volcano, forest, jungle, lake, river, waterfall, desert, canyon, countryside, vineyard, rice_terraces, savanna, glacier, city, skyline, historic_town, old_town, architecture, street_cafe, night_market, temple, castle, landmark, scenic_view, hiking_trail, road_trip, winter_snow, spring_bloom, sunset_view
-  - vibe: one short phrase (max 18 words) describing mood and atmosphere (romantic, adventurous, laid-back, luxury, backpacker, family-friendly, etc.).
-  - pexels_search_query: ONE line optimized for stock-photo search (English). Combine the place name PLUS concrete visual keywords from scape_types and vibe (e.g. "Santorini Greece white buildings blue dome sunset caldera", "Banff Canada turquoise lake mountain reflection"). No hashtags. 6 to 14 words ideal. This string is sent to Pexels before any carousel is built — make it specific to landscapes and scenery, not generic "travel".
-  - caption: 20 to 40 words. Describe the destination for travelers: what it feels like, what you see and do, scenery and atmosphere. Informative and specific (not generic "amazing place"). No hashtags.
-- hook: max 8 words, title for slide 1 (can nod to the theme’s scenery type).
+{count_block}
+- Each row must be UNIQUE: use distinct "destination" labels and distinct "pexels_search_query" strings (no near-duplicate queries).
+
+{single_place}
+
+{multi_place}
+
+Destination labeling (critical for Pexels and on-video titles):
+- The "destination" field must make the real place unambiguous. For country/region roundups (e.g. "top N in Portugal"), use "City or region, Country" on every row: "Lisbon, Portugal", "Porto, Portugal", "Algarve, Portugal" — never a lone bare city name when the country is obvious from the user's theme.
+- For city-scoped lists (e.g. "top spots in Madrid"), use "Landmark or neighborhood, Madrid" (or the city name the user gave).
+- If you add a scene suffix, use an em dash: "Lisbon, Portugal — Yellow trams".
+
+When the user does not spell out scenes, bias rows toward a MIX of attraction types where it fits the theme: e.g. one historic monument or landmark, one beach/coast/waterfront if relevant, one nightlife or golden-hour city energy, one culture or museum/market/traditional quarter, one scenic viewpoint or "things to do" outdoor activity.
+
+For EACH destination you MUST:
+  - Classify using scape_types: pick 2 to 5 tags from this vocabulary (underscore form; use exact wording where possible). Include tags that match the row's attraction type (monuments, beach, nightlife, culture, activities):
+    beach, coastline, ocean, waterfront, harbor, boardwalk, tropical, island, mountains, alpine, volcano, forest, jungle, lake, river, waterfall, desert, canyon, countryside, vineyard, rice_terraces, savanna, glacier, city, skyline, night_skyline, historic_town, old_town, architecture, street_cafe, night_market, nightlife, rooftop_bar, temple, castle, palace, cathedral, historic_monument, ruins, museum, gallery, landmark, scenic_view, hiking_trail, road_trip, food_market, street_food, festival, parade, local_culture, winter_snow, spring_bloom, sunset_view
+  - pexels_search_query: must reflect that row's attraction type with concrete English stock-search terms (e.g. monument facade columns, sandy beach turquoise water, city street neon night bar, crowded food market stalls, museum gallery visitors, traditional alley lanterns). Still include place name + country when known. 6 to 16 words. No hashtags.
+  - vibe: one short phrase (max 18 words) describing mood and atmosphere for that row.
+  - caption: 20 to 40 words for that row (what the visitor experiences; mention the attraction type when relevant). The caption MUST name the real-world location for that media: include the same city and country (or region) as in this row’s "destination" field — ideally in the first sentence — so viewers know where the image/video applies.
+- hook: max 8 words, title for slide 1 (can nod to the main place or theme).
 - cta: max 10 words, final slide.
 - hashtags: 8 to 12 tags WITHOUT the # symbol in JSON.
 - Escape quotes in strings. ASCII-friendly punctuation."""
 
-USER_PROMPT_TEMPLATE = """Theme / brief: {theme}
+
+USER_PROMPT_TEMPLATE = """Theme or media brief (may include place + requested shots, or a broad multi-destination theme):
+
+{theme}
+
+{geo_line}{count_line}
 
 Return this JSON shape (all fields required on each destination object):
 {{
@@ -41,11 +172,11 @@ Return this JSON shape (all fields required on each destination object):
   "hashtags": ["travel", "wanderlust"],
   "destinations": [
     {{
-      "destination": "City or region, Country",
-      "caption": "max twelve words",
-      "scape_types": ["city", "coastline", "historic_town"],
+      "destination": "City, Country — scene label OR City, Country for broad themes",
+      "caption": "20 to 40 words; must include city and country (or region) for this row",
+      "scape_types": ["historic_monument", "city", "landmark"],
       "vibe": "short mood and atmosphere phrase",
-      "pexels_search_query": "place name plus scenery keywords for stock photos"
+      "pexels_search_query": "place + distinct scene keywords for Pexels image/video search"
     }}
   ]
 }}"""
@@ -78,16 +209,48 @@ def _fallback_pexels_query(name: str, scape_types: list[str], vibe: str) -> str:
     return " ".join(parts)[:200].strip()
 
 
-def _dedupe_destinations(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _base_location_label(destination: str) -> str:
+    """City/region + country part before an em-dash scene suffix, e.g. 'Lisbon, Portugal'."""
+    s = (destination or "").strip()
+    if " — " in s:
+        return s.split(" — ", 1)[0].strip()
+    return s
+
+
+def base_location_label(destination: str) -> str:
+    """Public helper: on-image title for a Groq destination row (place without scene suffix)."""
+    return _base_location_label(destination)
+
+
+def _ensure_caption_includes_location(caption: str, destination: str) -> str:
+    """Prefix caption with the row's location when Groq omitted it (Pexels/download alignment)."""
+    cap = (caption or "").strip()
+    base = _base_location_label(destination) or (destination or "").strip()
+    if not base:
+        return cap
+    if base.lower() in cap.lower():
+        return cap if cap else base
+    if not cap:
+        return base
+    return f"{base}. {cap}"
+
+
+def _dedupe_destinations(
+    items: list[dict[str, Any]],
+    geo_hint: str | None = None,
+) -> list[dict[str, Any]]:
     seen: set[str] = set()
     out: list[dict[str, Any]] = []
     for row in items:
         name = str(row.get("destination", "")).strip()
+        if name and geo_hint:
+            name = enrich_destination_label(name, geo_hint)
         key = name.lower()
         if not name or key in seen:
             continue
         seen.add(key)
         cap = str(row.get("caption", "")).strip()
+        cap = _ensure_caption_includes_location(cap, name)
         words = cap.split()
         if len(words) > 48:
             cap = " ".join(words[:48])
@@ -108,19 +271,31 @@ def _dedupe_destinations(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return out
 
 
-def _validate_and_trim(data: dict[str, Any], theme: str) -> dict[str, Any]:
+def _validate_and_trim(
+    data: dict[str, Any],
+    theme: str,
+    *,
+    dest_min: int,
+    dest_max: int,
+    geo_hint: str | None = None,
+) -> dict[str, Any]:
     destinations = data.get("destinations") or []
     if not isinstance(destinations, list):
         destinations = []
 
-    fixed = _dedupe_destinations([d for d in destinations if isinstance(d, dict)])
+    fixed = _dedupe_destinations(
+        [d for d in destinations if isinstance(d, dict)],
+        geo_hint=geo_hint,
+    )
 
-    if len(fixed) > config.DESTINATION_COUNT_MAX:
-        fixed = fixed[: config.DESTINATION_COUNT_MAX]
-    if len(fixed) < config.DESTINATION_COUNT_MIN:
+    if len(fixed) > dest_max:
+        fixed = fixed[:dest_max]
+    if len(fixed) < dest_min:
         logger.warning(
-            "Groq returned fewer than %s destinations; proceeding with %s",
-            config.DESTINATION_COUNT_MIN,
+            "Groq returned fewer than %s destinations (wanted %s–%s); proceeding with %s",
+            dest_min,
+            dest_min,
+            dest_max,
             len(fixed),
         )
 
@@ -140,10 +315,20 @@ def _validate_and_trim(data: dict[str, Any], theme: str) -> dict[str, Any]:
     }
 
 
-def generate_travel_content(theme: str, api_key: str | None = None) -> dict[str, Any]:
+def generate_travel_content(
+    theme: str,
+    api_key: str | None = None,
+    *,
+    destination_count: int | None = None,
+) -> dict[str, Any]:
     """
     Call Groq for tourism guide JSON: hook, CTA, hashtags, destinations with
-    scape_types, vibe, and pexels_search_query for stock-image retrieval.
+    scape_types, vibe, and pexels_search_query for stock-image/video retrieval.
+
+    ``theme`` may be a short theme or a longer media brief (place + requested shots).
+
+    If ``destination_count`` is None, a count is inferred from the theme (e.g. "top 10 places").
+    Otherwise use that exact number (clamped to DESTINATION_REQUEST_MAX).
     """
     key = api_key or config.GROQ_API_KEY
     if not key:
@@ -151,17 +336,52 @@ def generate_travel_content(theme: str, api_key: str | None = None) -> dict[str,
             "GROQ_API_KEY is not set. Add it to your environment or .env file."
         )
 
-    client = Groq(api_key=key)
-    user_msg = USER_PROMPT_TEMPLATE.format(theme=theme.strip())
+    theme_s = theme.strip()
+    eff_n = destination_count
+    if eff_n is None:
+        eff_n = infer_requested_destination_count(theme_s)
+    if eff_n is not None:
+        eff_n = min(max(int(eff_n), 1), config.DESTINATION_REQUEST_MAX)
+        dest_min = dest_max = eff_n
+        count_line = (
+            f"CRITICAL: The destinations array MUST contain exactly {eff_n} objects "
+            f"(one per ranked place or scene). Rank them 1–{eff_n} in travel appeal for the user's topic."
+        )
+    else:
+        dest_min, dest_max = config.DESTINATION_COUNT_MIN, config.DESTINATION_COUNT_MAX
+        count_line = (
+            f"The destinations array MUST contain between {dest_min} and {dest_max} objects (inclusive)."
+        )
 
+    system_prompt = _travel_system_prompt(dest_min, dest_max)
+    geo = infer_geo_focus_from_theme(theme_s)
+    if geo:
+        geo_line = (
+            f'Geographic scope from the user\'s wording: "{geo}". '
+            f'Every "destination" must encode that scope: for a country/region scope use "PlaceName, {geo}" '
+            f"(e.g. Lisbon, {geo}; Porto, {geo}; a region like Algarve, {geo}). "
+            f'For a city scope, use "Spot, City". Each pexels_search_query must still name the specific place plus concrete visuals.\n\n'
+        )
+    else:
+        geo_line = ""
+
+    user_msg = USER_PROMPT_TEMPLATE.format(
+        theme=theme_s,
+        geo_line=geo_line,
+        count_line=count_line,
+    )
+
+    max_tokens = 8192 if dest_max > 10 else 4096 if dest_max > 5 else 2048
+
+    client = Groq(api_key=key)
     completion = client.chat.completions.create(
         model=config.GROQ_MODEL,
         messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_msg},
         ],
         temperature=0.85,
-        max_tokens=2048,
+        max_tokens=max_tokens,
         response_format={"type": "json_object"},
     )
 
@@ -175,7 +395,18 @@ def generate_travel_content(theme: str, api_key: str | None = None) -> dict[str,
         logger.error("Failed to parse Groq JSON: %s\nRaw: %s", e, raw[:500])
         raise RuntimeError("Groq response was not valid JSON.") from e
 
-    return _validate_and_trim(parsed, theme.strip())
+    out = _validate_and_trim(
+        parsed,
+        theme_s,
+        dest_min=dest_min,
+        dest_max=dest_max,
+        geo_hint=geo,
+    )
+    if eff_n is not None:
+        out["requested_destination_count"] = eff_n
+    if geo:
+        out["theme_geo_focus"] = geo
+    return out
 
 
 _REEL_PARSE_SYSTEM_PROMPT = """You are a travel reel prompt refiner.

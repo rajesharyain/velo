@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    :root { --ig-top: 54px; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0;
+      min-height: 100%;
+      font-family: Inter, system-ui, Arial, sans-serif;
+      background: #0b1220;
+      color: #e7ecf5;
+    }
+    /* Same sticky nav as /mcp-reels and index — _nav.html relies on these classes */
+    .ig-top {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      min-height: var(--ig-top);
+      padding: 0.5rem 0.75rem 0.6rem;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.5rem 0.75rem;
+    }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .nav-link {
+      color: rgba(255, 255, 255, 0.55);
+      text-decoration: none;
+      font-size: 0.82rem;
+      padding: 0.35rem 0.65rem;
+      border-radius: 8px;
+      border: none;
+    }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active { color: #fff; background: rgba(255, 255, 255, 0.1); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .card { background:#111a2d; border:1px solid #26324a; border-radius:14px; padding:16px; margin-top:14px; }
+    .muted { color:#9ca8bf; font-size:13px; }
+    h2 { margin: 0 0 8px; font-size:1.15rem; }
+    h3 { margin: 1rem 0 8px; font-size:1rem; color:#b8c5e0; }
+    label { display:block; font-weight:600; margin-bottom:6px; font-size:13px; }
+    input[type=text], textarea, select, button {
+      background:#0d1525; color:#e7ecf5; border:1px solid #2a3650; border-radius:10px; padding:10px 12px;
+      font-family: inherit;
+    }
+    textarea { width:100%; min-height:100px; resize:vertical; box-sizing:border-box; }
+    input[type=text] { width:100%; max-width:520px; box-sizing:border-box; }
+    select { min-width:200px; }
+    button { cursor:pointer; font-weight:600; margin-top:10px; }
+    button:disabled { opacity:.55; cursor:not-allowed; }
+    .row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-top:10px; }
+    .status { margin-top:12px; font-size:14px; }
+    .err { color:#f87171; }
+    .ok { color:#86efac; }
+    .place-block { border:1px solid #2a3650; border-radius:12px; padding:14px; margin-top:14px; background:#0f182a; }
+    .place-block h4 { margin:0 0 10px; font-size:1.05rem; color:#fff; }
+    .media-grid {
+      display:grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap:12px;
+    }
+    .media-tile {
+      border-radius:10px; overflow:hidden; border:1px solid #2a3650;
+      background:#0b1220; aspect-ratio:16/10;
+    }
+    .media-tile img, .media-tile video { width:100%; height:100%; object-fit:cover; display:block; vertical-align:top; }
+    .media-meta { font-size:11px; color:#9ca8bf; padding:6px 8px; border-top:1px solid #2a3650; }
+    table.plan { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
+    table.plan th, table.plan td { border:1px solid #2a3650; padding:8px 10px; text-align:left; vertical-align:top; }
+    table.plan th { background:#0d1525; color:#b8c5e0; }
+    table.plan code { font-size:12px; color:#c4d4f5; word-break:break-word; }
+    .pill { display:inline-block; padding:2px 8px; border-radius:999px; font-size:11px; font-weight:600; }
+    .pill-img { background:#1e3a5f; color:#93c5fd; }
+    .pill-vid { background:#3b2f5c; color:#d8b4fe; }
+    pre.json-out {
+      margin:0; padding:14px; background:#070b14; border:1px solid #26324a; border-radius:10px;
+      overflow:auto; max-height:480px; font-size:12px; line-height:1.45; color:#cbd5e1;
+    }
+    ul.hl { margin:6px 0 0 18px; color:#b8c5e0; font-size:13px; }
+    .query-pool { margin-top:8px; font-size:12px; color:#9ca8bf; }
+    .query-pool ol { margin:4px 0 0 18px; }
+  </style>
+</head>
+<body>
+  <header class="ig-top">
+    {% include "_nav.html" %}
+  </header>
+  <div class="wrap">
+    <div class="card">
+      <h2 style="margin:0 0 6px;">Reels AD — structured travel + Pexels</h2>
+      <p class="muted">Groq returns 5 places with queries; the server runs parallel Pexels image/video searches. Below you will see <strong>media first</strong>, then <strong>Groq structure</strong> and the <strong>exact strings sent to Pexels</strong>, then raw JSON.</p>
+
+      <label for="qInput">Prompt</label>
+      <textarea id="qInput" placeholder="e.g. Top places to visit in Portugal" required></textarea>
+
+      <div class="row">
+        <div>
+          <label for="tagsInput">Extra tags (optional, comma-separated)</label>
+          <input type="text" id="tagsInput" placeholder="sunset, drone, coastline" />
+        </div>
+        <div>
+          <label for="orientSel">Pexels orientation</label>
+          <select id="orientSel">
+            <option value="">Default (landscape)</option>
+            <option value="landscape">Landscape</option>
+            <option value="portrait">Portrait</option>
+            <option value="square">Square</option>
+          </select>
+        </div>
+        <div>
+          <label><input type="checkbox" id="dlChk" /> Download files to disk</label>
+        </div>
+      </div>
+
+      <button type="button" id="runBtn">Fetch media</button>
+      <div id="statusEl" class="status muted"></div>
+    </div>
+
+    <div id="resultsEl" style="display:none;">
+      <div class="card">
+        <h2>1. Images &amp; videos (Pexels)</h2>
+        <p class="muted">Grouped by place. URLs are remote (Pexels CDN).</p>
+        <div id="mediaMount"></div>
+      </div>
+
+      <div class="card">
+        <h2>2. Groq structure &amp; query pools</h2>
+        <p class="muted"><code>queries</code> from the model; <code>query_pool</code> is the ordered list used to schedule searches (deduped, padded to minimum length).</p>
+        <div id="structureMount"></div>
+      </div>
+
+      <div class="card">
+        <h2>3. Pexels search plan</h2>
+        <p class="muted">Each row is one HTTP search. <code>pexels_query</code> includes optional tags from the form.</p>
+        <div id="planMount"></div>
+      </div>
+
+      <div class="card">
+        <h2>4. Full JSON response</h2>
+        <pre id="jsonPre" class="json-out"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const qInput = document.getElementById("qInput");
+    const tagsInput = document.getElementById("tagsInput");
+    const orientSel = document.getElementById("orientSel");
+    const dlChk = document.getElementById("dlChk");
+    const runBtn = document.getElementById("runBtn");
+    const statusEl = document.getElementById("statusEl");
+    const resultsEl = document.getElementById("resultsEl");
+    const mediaMount = document.getElementById("mediaMount");
+    const structureMount = document.getElementById("structureMount");
+    const planMount = document.getElementById("planMount");
+    const jsonPre = document.getElementById("jsonPre");
+
+    function parseTags(raw) {
+      return String(raw || "")
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean)
+        .slice(0, 8);
+    }
+
+    function el(tag, cls, text) {
+      const n = document.createElement(tag);
+      if (cls) n.className = cls;
+      if (text != null) n.textContent = text;
+      return n;
+    }
+
+    function renderMedia(data) {
+      mediaMount.innerHTML = "";
+      const places = data.places || [];
+      places.forEach((place, pi) => {
+        const block = el("div", "place-block");
+        const h = el("h4", null, `${pi + 1}. ${place.name || "Place"}`);
+        block.appendChild(h);
+        const grid = el("div", "media-grid");
+        const media = place.media || [];
+        if (!media.length) {
+          block.appendChild(el("p", "muted", "No media returned for this place."));
+        } else {
+          media.forEach((m) => {
+            const tile = el("div", "media-tile");
+            if (m.type === "video") {
+              const v = document.createElement("video");
+              v.src = m.url;
+              v.controls = true;
+              v.muted = true;
+              v.playsInline = true;
+              tile.appendChild(v);
+            } else {
+              const img = document.createElement("img");
+              img.src = m.url;
+              img.alt = place.name || "";
+              img.loading = "lazy";
+              tile.appendChild(img);
+            }
+            const meta = el("div", "media-meta");
+            const pill = el("span", "pill " + (m.type === "video" ? "pill-vid" : "pill-img"), m.type);
+            meta.appendChild(pill);
+            meta.appendChild(document.createTextNode(" · "));
+            meta.appendChild(document.createTextNode(m.photographer || "—"));
+            if (m.width && m.height) {
+              meta.appendChild(document.createTextNode(` · ${m.width}×${m.height}`));
+            }
+            tile.appendChild(meta);
+            grid.appendChild(tile);
+          });
+        }
+        block.appendChild(grid);
+        mediaMount.appendChild(block);
+      });
+    }
+
+    function renderStructure(data) {
+      structureMount.innerHTML = "";
+      const rows = data.groq_places || [];
+      if (!rows.length) {
+        structureMount.appendChild(el("p", "muted", "No groq_places in response."));
+        return;
+      }
+      rows.forEach((gp, i) => {
+        const block = el("div", "place-block");
+        block.appendChild(el("h4", null, `${i + 1}. ${gp.name} (${gp.type || "?"})`));
+        if ((gp.highlights || []).length) {
+          block.appendChild(el("h3", null, "Highlights"));
+          const ul = document.createElement("ul");
+          ul.className = "hl";
+          gp.highlights.forEach((h) => {
+            const li = document.createElement("li");
+            li.textContent = h;
+            ul.appendChild(li);
+          });
+          block.appendChild(ul);
+        }
+        block.appendChild(el("h3", null, "best_query"));
+        const bq = el("p", null, gp.best_query || "—");
+        bq.style.margin = "4px 0";
+        bq.style.fontSize = "14px";
+        block.appendChild(bq);
+
+        block.appendChild(el("h3", null, "queries (from model)"));
+        const qul = document.createElement("ul");
+        qul.className = "hl";
+        (gp.queries || []).forEach((q) => {
+          const li = document.createElement("li");
+          li.textContent = q;
+          qul.appendChild(li);
+        });
+        block.appendChild(qul);
+
+        const poolWrap = el("div", "query-pool");
+        poolWrap.appendChild(el("strong", null, "query_pool (Pexels scheduling order): "));
+        const ol = document.createElement("ol");
+        (gp.query_pool || []).forEach((q) => {
+          const li = document.createElement("li");
+          li.textContent = q;
+          ol.appendChild(li);
+        });
+        poolWrap.appendChild(ol);
+        block.appendChild(poolWrap);
+
+        structureMount.appendChild(block);
+      });
+    }
+
+    function renderPlan(data) {
+      planMount.innerHTML = "";
+      const steps = data.search_plan || [];
+      if (!steps.length) {
+        planMount.appendChild(el("p", "muted", "No search_plan in response."));
+        return;
+      }
+      const table = document.createElement("table");
+      table.className = "plan";
+      const thead = document.createElement("thead");
+      thead.innerHTML = "<tr><th>#</th><th>Place</th><th>Type</th><th>Base query</th><th>Sent to Pexels</th></tr>";
+      table.appendChild(thead);
+      const tb = document.createElement("tbody");
+      steps.forEach((s) => {
+        const tr = document.createElement("tr");
+        const td0 = el("td", null, String(s.step_index + 1));
+        const td1 = el("td", null, s.place_name || "");
+        const td2 = document.createElement("td");
+        const pill = el("span", "pill " + (s.media_type === "video" ? "pill-vid" : "pill-img"), s.media_type);
+        td2.appendChild(pill);
+        const td3 = document.createElement("td");
+        const c3 = document.createElement("code");
+        c3.textContent = s.base_query || "";
+        td3.appendChild(c3);
+        const td4 = document.createElement("td");
+        const c4 = document.createElement("code");
+        c4.textContent = s.pexels_query || "";
+        td4.appendChild(c4);
+        tr.appendChild(td0);
+        tr.appendChild(td1);
+        tr.appendChild(td2);
+        tr.appendChild(td3);
+        tr.appendChild(td4);
+        tb.appendChild(tr);
+      });
+      table.appendChild(tb);
+      planMount.appendChild(table);
+    }
+
+    runBtn.addEventListener("click", async () => {
+      const query = (qInput.value || "").trim();
+      if (!query) {
+        statusEl.className = "status err";
+        statusEl.textContent = "Enter a prompt.";
+        return;
+      }
+      runBtn.disabled = true;
+      statusEl.className = "status muted";
+      statusEl.textContent = "Calling Groq + Pexels (can take 30–90s)…";
+      resultsEl.style.display = "none";
+
+      const body = {
+        query,
+        tags: parseTags(tagsInput.value),
+        download: !!dlChk.checked,
+      };
+      const o = (orientSel.value || "").trim();
+      if (o) body.orientation = o;
+
+      try {
+        const res = await fetch("/api/ad-reels/travel-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+
+        renderMedia(data);
+        renderStructure(data);
+        renderPlan(data);
+        jsonPre.textContent = JSON.stringify(data, null, 2);
+        resultsEl.style.display = "block";
+        statusEl.className = "status ok";
+        statusEl.textContent = `Done. Pexels calls: ${data.pexels_calls_used ?? "—"}, cache hits: ${data.cache_hits ?? "—"}, model: ${data.groq_model || "—"}`;
+      } catch (e) {
+        statusEl.className = "status err";
+        statusEl.textContent = String(e && e.message ? e.message : e);
+      } finally {
+        runBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>

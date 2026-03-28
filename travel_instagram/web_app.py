@@ -1,8 +1,12 @@
 """
 Small web UI for the travel Instagram generator.
 
-Run from project root:
+Run from project root (recommended — avoids wrong ``travel_instagram`` package)::
+  python -m uvicorn velo_web:app --reload --host 127.0.0.1 --port 8000
+
+Or::
   uvicorn travel_instagram.web_app:app --reload --host 127.0.0.1 --port 8000
+  (set PYTHONPATH to the repo root first)
 """
 
 from __future__ import annotations
@@ -11,16 +15,21 @@ import asyncio
 import io
 import json
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+import httpx
+from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
 from pydantic import BaseModel, Field
 from starlette.templating import Jinja2Templates
+
+from app.models.place import TravelMediaRequest, TravelMediaResponse
+from app.services.aggregator import aggregate_travel_media
 
 from travel_instagram import config
 from travel_instagram import pipeline
@@ -37,10 +46,23 @@ logger = logging.getLogger(__name__)
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
 
+
+@asynccontextmanager
+async def _velo_lifespan(app: FastAPI):
+    paths = {getattr(r, "path", None) for r in app.routes if getattr(r, "path", None)}
+    logger.warning(
+        "Velo UI: %s | GET /ad-reels registered=%s",
+        Path(__file__).resolve(),
+        "/ad-reels" in paths,
+    )
+    yield
+
+
 app = FastAPI(
     title="Travel Instagram Generator",
     description="Generate carousels and reels from a theme (Groq + Pexels + FFmpeg).",
     version="1.0.0",
+    lifespan=_velo_lifespan,
 )
 
 config.ensure_output_dirs()
@@ -95,7 +117,12 @@ def _enrich_summary_for_web(summary: dict[str, Any]) -> dict[str, Any]:
 
 
 class GenerateBody(BaseModel):
-    theme: str = Field(..., min_length=1, max_length=500)
+    theme: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Short theme or detailed media brief (place + requested shots); passed to Groq for Pexels queries.",
+    )
     music_track_id: str | None = Field(
         default=None,
         max_length=512,
@@ -113,8 +140,18 @@ class McpReelBody(BaseModel):
 
 
 class AutofillReelMediaBody(BaseModel):
-    theme: str = Field(..., min_length=1, max_length=500)
-    max_items: int = Field(default=8, ge=1, le=20)
+    theme: str = Field(
+        ...,
+        min_length=1,
+        max_length=2000,
+        description="Short theme or detailed media brief; Groq expands into per-scene Pexels search queries.",
+    )
+    max_items: int = Field(
+        default=8,
+        ge=1,
+        le=20,
+        description="Upper bound on downloaded clips; server bumps this when the theme includes 'top N places'.",
+    )
     include_video: bool = Field(default=True, description="Download portrait videos too.")
 
 
@@ -155,6 +192,19 @@ async def mcp_reels_page(request: Request) -> HTMLResponse:
     )
 
 
+@app.get("/ad-reels", response_class=HTMLResponse)
+async def ad_reels_page(request: Request) -> HTMLResponse:
+    """Groq structured places + parallel Pexels preview (same registration style as ``/mcp-reels``)."""
+    return templates.TemplateResponse(
+        "reels_ad.html",
+        {
+            "request": request,
+            "title": "Reels AD — Travel media",
+            "nav_active": "ad_reels",
+        },
+    )
+
+
 @app.get("/upload-reel", response_class=HTMLResponse)
 async def upload_reel_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -165,6 +215,32 @@ async def upload_reel_page(request: Request) -> HTMLResponse:
             "nav_active": "upload_reel",
         },
     )
+
+
+@app.post("/api/ad-reels/travel-media", response_model=TravelMediaResponse)
+async def api_ad_reels_travel_media(body: TravelMediaRequest) -> TravelMediaResponse:
+    """
+    Run Groq → 5 structured places → up to 20 parallel Pexels searches.
+    Response includes groq_places, search_plan, and per-place media URLs.
+    """
+    q = (body.query or "").strip()
+    if not q:
+        raise HTTPException(status_code=400, detail="query is required.")
+    try:
+        async with httpx.AsyncClient(timeout=120.0, follow_redirects=True) as client:
+            return await aggregate_travel_media(
+                q,
+                client,
+                extra_tags=body.tags,
+                orientation=body.orientation,
+                download=body.download,
+            )
+    except RuntimeError as e:
+        logger.warning("Reels AD travel media failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except httpx.HTTPError as e:
+        logger.exception("Reels AD upstream HTTP error")
+        raise HTTPException(status_code=502, detail=f"Upstream error: {e}") from e
 
 
 @app.post("/api/mcp-reels/generate")
@@ -254,6 +330,7 @@ async def api_upload_reel_generate(
 
     media_paths: list[Path] = []
     captions: list[str] = []
+    titles: list[str] = []
     overlay_positions: list[tuple[float, float]] = []
     overlay_font_scales: list[float] = []
     try:
@@ -275,6 +352,7 @@ async def api_upload_reel_generate(
                 raise HTTPException(status_code=400, detail="items_json entries must be objects.")
             src = str(it.get("source") or "").strip()
             caption = str(it.get("caption") or "")
+            title = str(it.get("title") or "").strip()
             overlay_x = it.get("overlay_x", 0.5)
             overlay_y = it.get("overlay_y", 0.72)
             font_scale = it.get("font_scale", 1.0)
@@ -292,6 +370,7 @@ async def api_upload_reel_generate(
                     raise HTTPException(status_code=404, detail=f"Server asset not found: {asset_id}")
                 media_paths.append(cand)
                 captions.append(caption)
+                titles.append(title)
                 overlay_positions.append((float(overlay_x), float(overlay_y)))
                 overlay_font_scales.append(float(font_scale))
             elif src == "upload":
@@ -304,6 +383,7 @@ async def api_upload_reel_generate(
                     raise HTTPException(status_code=400, detail="upload_index out of range.")
                 media_paths.append(uploaded_paths[upload_index])
                 captions.append(caption)
+                titles.append(title)
                 overlay_positions.append((float(overlay_x), float(overlay_y)))
                 overlay_font_scales.append(float(font_scale))
             else:
@@ -340,6 +420,7 @@ async def api_upload_reel_generate(
             transition_speed=transition_speed,
             overlay_positions=overlay_positions,
             overlay_font_scales=overlay_font_scales,
+            titles=titles if items_json else None,
         )
         out = dict(res)
         out["video_url"] = _to_media_url(out.get("output_path") or "") or None
@@ -517,15 +598,25 @@ async def api_music_tracks() -> JSONResponse:
 
 
 @app.get("/api/health")
-async def health() -> dict[str, str]:
-    return {"status": "ok"}
+async def health(debug: bool = Query(default=False)) -> dict[str, Any]:
+    """Use ``?debug=1`` to see which ``web_app.py`` is loaded and whether ``/ad-reels`` is registered."""
+    out: dict[str, Any] = {"status": "ok"}
+    if debug:
+        paths = {getattr(r, "path", None) for r in app.routes if getattr(r, "path", None)}
+        out["web_app_path"] = str(Path(__file__).resolve())
+        out["has_ad_reels"] = "/ad-reels" in paths
+    return out
 
 
 if __name__ == "__main__":
+    import sys
+
     import uvicorn
 
+    _root = Path(__file__).resolve().parent.parent
+    sys.path.insert(0, str(_root))
     uvicorn.run(
-        "travel_instagram.web_app:app",
+        "velo_web:app",
         host="127.0.0.1",
         port=8000,
         reload=True,

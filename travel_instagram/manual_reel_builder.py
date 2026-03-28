@@ -13,6 +13,10 @@ from PIL import Image, ImageDraw, ImageFont
 from travel_instagram import config
 from travel_instagram import media_processor
 
+# Caption backdrop on manual upload-reel overlays. None = text only (strokes still help readability).
+# Restore the previous pill: set to (8, 12, 22, 208) — dark blue-black at ~81% alpha.
+CAPTION_OVERLAY_PANEL_RGBA: tuple[int, int, int, int] | None = None
+
 
 def _slug(s: str) -> str:
     s = re.sub(r"[^a-zA-Z0-9]+", "-", (s or "").strip().lower()).strip("-")
@@ -32,35 +36,45 @@ def _try_font(paths: list[str], size: int) -> ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _render_caption_overlay(
-    out_png: Path,
-    caption: str,
-    *,
-    anchor_x: float = 0.5,
-    anchor_y: float = 0.5,
-    font_scale: float = 1.0,
-) -> Path:
-    w, h = config.REEL_SIZE
-    out_png.parent.mkdir(parents=True, exist_ok=True)
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(img)
+def infer_overlay_title_from_caption(caption: str) -> str:
+    """If the caption starts with a location clause before '. ', use that as the overlay title."""
+    cap = (caption or "").strip()
+    if not cap or ". " not in cap:
+        return ""
+    head, _tail = cap.split(". ", 1)
+    head = head.strip()
+    if 4 <= len(head) <= 88 and ("," in head or len(head.split()) <= 10):
+        return head
+    return ""
 
-    text = (caption or "").strip()
-    if not text:
-        img.save(out_png)
-        return out_png
 
-    anchor_x = max(0.0, min(1.0, float(anchor_x)))
-    anchor_y = max(0.0, min(1.0, float(anchor_y)))
-    font_scale = max(0.6, min(1.7, float(font_scale)))
+def strip_leading_title_from_caption(caption: str, title: str) -> str:
+    """Remove a leading location/title from caption text so the overlay body does not repeat it."""
+    cap = (caption or "").strip()
+    tit = (title or "").strip()
+    if not tit or not cap:
+        return cap
+    low_c, low_t = cap.lower(), tit.lower()
+    if low_c.startswith(low_t):
+        rest = cap[len(tit) :].lstrip(" .—:，")
+        return rest if rest.strip() else cap
+    pref = tit + "."
+    if low_c.startswith(pref.lower()):
+        rest = cap[len(pref) :].strip()
+        return rest if rest else cap
+    return cap
 
-    font = _try_font(
-        [r"C:\Windows\Fonts\segoeuib.ttf", r"C:\Windows\Fonts\arialbd.ttf"],
-        int(h * 0.045 * font_scale),
-    )
-    max_w = int(w * 0.84)
 
-    words = text.split()
+def _wrap_words_to_lines(
+    draw: Any,
+    text: str,
+    font: ImageFont.ImageFont,
+    max_w: int,
+    max_lines: int,
+) -> list[str]:
+    words = (text or "").split()
+    if not words:
+        return []
     lines: list[str] = []
     cur: list[str] = []
     for wtok in words:
@@ -71,21 +85,136 @@ def _render_caption_overlay(
         else:
             if cur:
                 lines.append(" ".join(cur))
-            cur = [wtok]
-    if cur:
+                if len(lines) >= max_lines:
+                    break
+                cur = []
+            one = draw.textbbox((0, 0), wtok, font=font)
+            if one[2] - one[0] > max_w:
+                lines.append(wtok)
+                if len(lines) >= max_lines:
+                    break
+                cur = []
+            else:
+                cur = [wtok]
+    if cur and len(lines) < max_lines:
         lines.append(" ".join(cur))
-    lines = lines[:4]
+    return lines[:max_lines]
 
+
+def _render_caption_overlay(
+    out_png: Path,
+    caption: str,
+    *,
+    title: str = "",
+    anchor_x: float = 0.5,
+    anchor_y: float = 0.5,
+    font_scale: float = 1.0,
+) -> Path:
+    w, h = config.REEL_SIZE
+    out_png.parent.mkdir(parents=True, exist_ok=True)
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+
+    title_t = (title or "").strip()
+    body_t = (caption or "").strip()
+
+    anchor_x = max(0.0, min(1.0, float(anchor_x)))
+    anchor_y = max(0.0, min(1.0, float(anchor_y)))
+    font_scale = max(0.6, min(1.7, float(font_scale)))
+
+    max_w = int(w * 0.84)
     line_gap = max(8, int(h * 0.008))
-    heights = [draw.textbbox((0, 0), ln, font=font)[3] - draw.textbbox((0, 0), ln, font=font)[1] for ln in lines]
-    block_h = sum(heights) + max(0, len(lines) - 1) * line_gap
-    block_w = 0
-    for ln in lines:
-        bb = draw.textbbox((0, 0), ln, font=font)
-        block_w = max(block_w, bb[2] - bb[0])
-
+    title_body_gap = max(10, int(h * 0.014))
     pad_x = int(max(30, w * 0.06))
     pad_y = int(max(20, h * 0.022))
+
+    if not title_t and not body_t:
+        img.save(out_png)
+        return out_png
+
+    # Single block: legacy one-style caption (no separate title)
+    if not title_t:
+        font = _try_font(
+            [r"C:\Windows\Fonts\segoeuib.ttf", r"C:\Windows\Fonts\arialbd.ttf"],
+            int(h * 0.045 * font_scale),
+        )
+        lines = _wrap_words_to_lines(draw, body_t, font, max_w, 4)
+        if not lines:
+            img.save(out_png)
+            return out_png
+        heights = [
+            draw.textbbox((0, 0), ln, font=font)[3] - draw.textbbox((0, 0), ln, font=font)[1]
+            for ln in lines
+        ]
+        block_h = sum(heights) + max(0, len(lines) - 1) * line_gap
+        block_w = max(
+            draw.textbbox((0, 0), ln, font=font)[2] - draw.textbbox((0, 0), ln, font=font)[0]
+            for ln in lines
+        )
+        rect_w = min(w - 36, block_w + pad_x * 2)
+        rect_h = block_h + pad_y * 2
+        cx = float(anchor_x) * float(w)
+        cy = float(anchor_y) * float(h)
+        x0 = int(round(cx - rect_w / 2.0))
+        y0 = int(round(cy - rect_h / 2.0))
+        x0 = max(10, min(x0, w - rect_w - 10))
+        y0 = max(10, min(y0, h - rect_h - 10))
+        if CAPTION_OVERLAY_PANEL_RGBA is not None:
+            draw.rounded_rectangle(
+                (x0, y0, x0 + rect_w, y0 + rect_h),
+                radius=int(min(34, h * 0.03)),
+                fill=CAPTION_OVERLAY_PANEL_RGBA,
+            )
+        cy_line = y0 + pad_y
+        stroke_w = max(1, int(round(font_scale * 1.1)))
+        for ln in lines:
+            bb = draw.textbbox((0, 0), ln, font=font)
+            tw = bb[2] - bb[0]
+            tx = int(round((x0 + rect_w / 2.0) - tw / 2.0))
+            draw.text(
+                (tx, cy_line),
+                ln,
+                font=font,
+                fill=(245, 248, 252, 252),
+                stroke_width=stroke_w,
+                stroke_fill=(0, 0, 0, 160),
+            )
+            cy_line += (bb[3] - bb[1]) + line_gap
+        img.save(out_png)
+        return out_png
+
+    title_font = _try_font(
+        [r"C:\Windows\Fonts\segoeuib.ttf", r"C:\Windows\Fonts\arialbd.ttf"],
+        int(h * 0.052 * font_scale),
+    )
+    body_font = _try_font(
+        [r"C:\Windows\Fonts\segoeui.ttf", r"C:\Windows\Fonts\arial.ttf"],
+        int(h * 0.038 * font_scale),
+    )
+    title_lines = _wrap_words_to_lines(draw, title_t, title_font, max_w, 2)
+    body_lines = _wrap_words_to_lines(draw, body_t, body_font, max_w, 5) if body_t else []
+
+    th = [
+        draw.textbbox((0, 0), ln, font=title_font)[3]
+        - draw.textbbox((0, 0), ln, font=title_font)[1]
+        for ln in title_lines
+    ]
+    bh = [
+        draw.textbbox((0, 0), ln, font=body_font)[3] - draw.textbbox((0, 0), ln, font=body_font)[1]
+        for ln in body_lines
+    ]
+    block_h = sum(th) + max(0, len(title_lines) - 1) * line_gap
+    if body_lines:
+        block_h += title_body_gap + sum(bh) + max(0, len(body_lines) - 1) * line_gap
+
+    block_w = 0
+    for ln in title_lines:
+        bb = draw.textbbox((0, 0), ln, font=title_font)
+        block_w = max(block_w, bb[2] - bb[0])
+    for ln in body_lines:
+        bb = draw.textbbox((0, 0), ln, font=body_font)
+        block_w = max(block_w, bb[2] - bb[0])
+
     rect_w = min(w - 36, block_w + pad_x * 2)
     rect_h = block_h + pad_y * 2
     cx = float(anchor_x) * float(w)
@@ -95,28 +224,46 @@ def _render_caption_overlay(
     x0 = max(10, min(x0, w - rect_w - 10))
     y0 = max(10, min(y0, h - rect_h - 10))
 
-    draw.rounded_rectangle(
-        (x0, y0, x0 + rect_w, y0 + rect_h),
-        radius=int(min(34, h * 0.03)),
-        fill=(8, 12, 22, 208),
-    )
+    if CAPTION_OVERLAY_PANEL_RGBA is not None:
+        draw.rounded_rectangle(
+            (x0, y0, x0 + rect_w, y0 + rect_h),
+            radius=int(min(34, h * 0.03)),
+            fill=CAPTION_OVERLAY_PANEL_RGBA,
+        )
 
-    cy = y0 + pad_y
-    cx = x0 + rect_w // 2
-    stroke_w = max(1, int(round(font_scale * 1.1)))
-    for ln in lines:
-        bb = draw.textbbox((0, 0), ln, font=font)
+    cy_line = y0 + pad_y
+    title_stroke = max(1, int(round(font_scale * 1.25)))
+    body_stroke = max(1, int(round(font_scale * 0.95)))
+    for ln in title_lines:
+        bb = draw.textbbox((0, 0), ln, font=title_font)
         tw = bb[2] - bb[0]
         tx = int(round((x0 + rect_w / 2.0) - tw / 2.0))
         draw.text(
-            (tx, cy),
+            (tx, cy_line),
             ln,
-            font=font,
-            fill=(245, 248, 252, 252),
-            stroke_width=stroke_w,
-            stroke_fill=(0, 0, 0, 160),
+            font=title_font,
+            fill=(255, 255, 255, 255),
+            stroke_width=title_stroke,
+            stroke_fill=(0, 0, 0, 170),
         )
-        cy += (bb[3] - bb[1]) + line_gap
+        cy_line += (bb[3] - bb[1]) + line_gap
+
+    if body_lines:
+        cy_line += title_body_gap - line_gap
+
+    for ln in body_lines:
+        bb = draw.textbbox((0, 0), ln, font=body_font)
+        tw = bb[2] - bb[0]
+        tx = int(round((x0 + rect_w / 2.0) - tw / 2.0))
+        draw.text(
+            (tx, cy_line),
+            ln,
+            font=body_font,
+            fill=(230, 235, 245, 252),
+            stroke_width=body_stroke,
+            stroke_fill=(0, 0, 0, 150),
+        )
+        cy_line += (bb[3] - bb[1]) + line_gap
 
     img.save(out_png)
     return out_png
@@ -188,11 +335,15 @@ def build_manual_reel(
     transition_speed: str = "auto",
     overlay_positions: list[tuple[float, float]] | None = None,
     overlay_font_scales: list[float] | None = None,
+    titles: list[str] | None = None,
 ) -> dict[str, Any]:
     if not media_paths:
         raise RuntimeError("Upload at least one image or video.")
     if len(captions) < len(media_paths):
         captions = captions + [""] * (len(media_paths) - len(captions))
+    tit_list = list(titles) if titles else []
+    if len(tit_list) < len(media_paths):
+        tit_list = tit_list + [""] * (len(media_paths) - len(tit_list))
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_manual_" + _slug(media_paths[0].stem)
     out_dir = config.OUTPUT_DIR / "manual_reels" / run_id
@@ -258,9 +409,21 @@ def build_manual_reel(
         ov = reel_work / f"overlay_{i:02d}.png"
         anchor = overlay_positions[i] if i < len(overlay_positions) else (0.5, 0.72)
         fs = overlay_font_scales[i] if i < len(overlay_font_scales) else 1.0
+        cap_i = captions[i] if i < len(captions) else ""
+        tit_i = (tit_list[i] if i < len(tit_list) else "").strip()
+        cap_clean = (cap_i or "").strip()
+        if not tit_i and cap_clean:
+            tit_i = infer_overlay_title_from_caption(cap_clean)
+            if tit_i:
+                cap_clean = strip_leading_title_from_caption(cap_clean, tit_i).strip()
+        elif tit_i and cap_clean:
+            stripped = strip_leading_title_from_caption(cap_clean, tit_i).strip()
+            if stripped:
+                cap_clean = stripped
         _render_caption_overlay(
             ov,
-            captions[i] if i < len(captions) else "",
+            cap_clean,
+            title=tit_i,
             anchor_x=anchor[0],
             anchor_y=anchor[1],
             font_scale=fs,

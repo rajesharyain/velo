@@ -72,6 +72,8 @@ CAROUSEL_SIZE = REEL_SIZE
 REEL_BRAND_TEXT: str = (os.getenv("REEL_BRAND_TEXT", "budgetwing.com") or "").strip()
 DESTINATION_COUNT_MIN = 3
 DESTINATION_COUNT_MAX = 5
+# "Top N places" / ranked lists from Groq (capped for API size and Pexels cost)
+DESTINATION_REQUEST_MAX = max(5, int(os.getenv("DESTINATION_REQUEST_MAX", "15")))
 IMAGES_PER_DESTINATION = (2, 3)  # min, max
 PEXELS_IMAGES_PAGE_SIZE = 15
 PEXELS_VIDEOS_PAGE_SIZE = 10

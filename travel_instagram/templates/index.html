@@ -259,11 +259,11 @@
   </header>
   <div class="wrap">
     <h1>{{ title }}</h1>
-    <p class="sub">Enter a travel theme. The server runs Groq, Pexels, and FFmpeg—this can take one to several minutes.</p>
+    <p class="sub">Enter a travel theme or a detailed media brief (place + shots you want). The server runs Groq, Pexels, and FFmpeg—this can take one to several minutes.</p>
 
     <form id="form" action="#" method="post">
-      <label for="theme">Theme</label>
-      <textarea id="theme" name="theme" placeholder="e.g. hidden beaches in the Mediterranean" required></textarea>
+      <label for="theme">Theme or media brief</label>
+      <textarea id="theme" name="theme" placeholder="e.g. hidden beaches in the Mediterranean&#10;or: Tokyo — neon Shibuya, Shinjuku at night, ramen alley, Meiji shrine forest" required></textarea>
       <label for="music-track" style="margin-top:1rem;">Background music</label>
       <select id="music-track" class="music-select" name="music_track" aria-label="Background music">
         <option value="__auto__">Automatic (.env REEL_MUSIC_PATH or first file in music/)</option>

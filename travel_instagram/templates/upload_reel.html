@@ -42,16 +42,40 @@
       background:rgba(8, 12, 22, 0.68);
       border:1px solid rgba(42, 54, 80, 0.85);
       color:#f5f8ff;
-      font-weight:800;
       text-align:center;
       max-width:118px;
       cursor:default;
       user-select:none;
-      white-space:pre-wrap;
       word-break:break-word;
-      line-height:1.15;
+      line-height:1.18;
+    }
+    .caption-overlay-preview .ovl-title {
+      display:block;
+      font-weight:800;
+      font-size:0.95em;
+      margin-bottom:3px;
+      color:#fff;
+    }
+    .caption-overlay-preview .ovl-body {
+      display:block;
+      font-weight:600;
+      font-size:0.82em;
+      color:#e8edf7;
+      opacity:0.96;
     }
     .caption-overlay-preview.empty { opacity:0.65; color:#b8c3db; }
+    .caption-overlay-preview.empty .ovl-title,
+    .caption-overlay-preview.empty .ovl-body { color:#b8c3db; }
+    input[data-title-index] {
+      width:100%;
+      margin-bottom:8px;
+      background:#0d1525;
+      color:#e7ecf5;
+      border:1px solid #2a3650;
+      border-radius:10px;
+      padding:8px 10px;
+      font-size:13px;
+    }
     .font-size-row {
       margin-top:8px;
       display:flex;
@@ -135,11 +159,12 @@
     {% include "_nav.html" %}
     <div class="card">
       <h2 style="margin:0 0 10px;">Generate Reel from Images/Videos</h2>
-      <div class="muted">Upload files, add one caption per item, then generate a 9:16 reel with FFmpeg.</div>
+      <div class="muted">Upload files, set a <strong>location title</strong> (first line on the clip) and a <strong>caption</strong> (second line), then generate a 9:16 reel with FFmpeg.</div>
       <div class="muted" style="margin-top:6px;">Tip: drag and drop items below to reorder reel sequence.</div>
       <div style="margin-top:1rem;">
-        <label for="themeInput" class="muted" style="display:block; font-weight:700; margin-bottom:6px;">Theme (Groq → Pexels media download)</label>
-        <textarea id="themeInput" placeholder="e.g. beautiful coastal cities in Portugal" required></textarea>
+        <label for="themeInput" class="muted" style="display:block; font-weight:700; margin-bottom:6px;">Media brief (Groq → Pexels)</label>
+        <textarea id="themeInput" placeholder="e.g. Top 10 places in Portugal to visit&#10;or: Top 5 places to visit in Madrid&#10;or: Lisbon — yellow trams, Alfama alleys, Miradouro sunset" required></textarea>
+        <div class="muted" style="margin-top:6px; font-size:0.85rem;">Say <strong>top N places</strong> (e.g. top 10 in Portugal, top 5 in Madrid) to get N destinations and about one image or video each, in rank order. Other briefs still work (scenes per city, broad themes).</div>
         <div class="row" style="margin-top:10px;">
           <button id="autoFillBtn" type="button">Download from Pexels</button>
           <span class="muted">Pre-fills items; you can remove/replace before generating.</span>
@@ -274,7 +299,7 @@
     const resultEl = document.getElementById("result");
     const outVideo = document.getElementById("outVideo");
     const meta = document.getElementById("meta");
-    let itemsState = []; // {source:'server'|'upload', kind:'image'|'video', asset_id?:string, file?:File, web_url?:string, caption:string}
+    let itemsState = []; // {source, kind, asset_id?, file?, web_url?, title, caption}
     let tracksList = [];
     let firstTrackId = null;
 
@@ -284,6 +309,25 @@
       const videoByType = t.startsWith("video/");
       const videoByExt = [".mp4", ".mov", ".m4v", ".webm"].some(ext => n.endsWith(ext));
       return videoByType || videoByExt ? "video" : "image";
+    }
+
+    function pexelsLocationTitle(it) {
+      const rawTitle = String((it && it.title) != null ? it.title : "").trim();
+      if (rawTitle) return rawTitle;
+      const dest = String((it && it.destination) != null ? it.destination : "").trim();
+      if (dest) {
+        for (const sep of [" — ", " – ", " - "]) {
+          if (dest.includes(sep)) return dest.split(sep)[0].trim();
+        }
+        return dest;
+      }
+      const cap = String((it && it.caption) != null ? it.caption : "").trim();
+      const dot = cap.indexOf(". ");
+      if (dot >= 4 && dot <= 120) {
+        const head = cap.slice(0, dot).trim();
+        if (head.includes(",") || head.split(/\s+/).length <= 12) return head;
+      }
+      return "";
     }
 
     function toStaticMusicUrl(trackId) {
@@ -370,7 +414,10 @@
                 ? `<video class="thumb-media" src="${url}" muted playsinline controls></video>`
                 : `<img class="thumb-media" src="${url}" alt="upload preview" />`
               }
-              <div class="caption-overlay-preview empty" data-overlay="true"></div>
+              <div class="caption-overlay-preview empty" data-overlay="true">
+                <span class="ovl-title"></span>
+                <span class="ovl-body"></span>
+              </div>
             </div>
             <div style="flex:1;">
               <div class="muted" style="margin-bottom:8px;">${idx + 1}. ${
@@ -378,39 +425,52 @@
                   ? (it.name || (isVideo ? "Pexels video" : "Pexels image"))
                   : it.file.name
               }</div>
-              <textarea data-caption-index="${idx}" placeholder="Caption for this item..."></textarea>
+              <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Location (title on image)</label>
+              <input type="text" data-title-index="${idx}" placeholder="e.g. Lisbon, Portugal" autocomplete="off" />
+              <label class="muted" style="display:block;font-size:12px;margin:8px 0 4px;">Caption (line below title)</label>
+              <textarea data-caption-index="${idx}" placeholder="Describe this shot..."></textarea>
             </div>
             <div style="display:flex; align-items:flex-start;">
               <button type="button" class="remove-btn" title="Remove this item">Remove</button>
             </div>
           </div>
         `;
+        const titleIn = card.querySelector(`input[data-title-index="${idx}"]`);
         const capTa = card.querySelector(`textarea[data-caption-index="${idx}"]`);
+        const overlayEl = card.querySelector(".caption-overlay-preview[data-overlay='true']");
+        const ovlTitle = overlayEl && overlayEl.querySelector(".ovl-title");
+        const ovlBody = overlayEl && overlayEl.querySelector(".ovl-body");
+
+        const applyOverlayPreview = () => {
+          const t = (itemsState[idx].title || "").trim();
+          const b = (itemsState[idx].caption || "").trim();
+          if (ovlTitle) ovlTitle.textContent = t || "";
+          if (ovlBody) ovlBody.textContent = b || "";
+          const has = !!(t || b);
+          if (overlayEl) {
+            overlayEl.classList.toggle("empty", !has);
+            const fs = parseFloat(overlayFontScaleSel.value || "1.0");
+            const previewBasePx = 11;
+            overlayEl.style.fontSize = Math.round(previewBasePx * fs) + "px";
+          }
+        };
+
+        if (titleIn) titleIn.value = it.title || "";
         if (capTa) capTa.value = it.caption || "";
+        if (titleIn) {
+          titleIn.addEventListener("input", () => {
+            itemsState[idx].title = titleIn.value || "";
+            applyOverlayPreview();
+          });
+        }
         if (capTa) {
           capTa.addEventListener("input", () => {
             itemsState[idx].caption = capTa.value || "";
+            applyOverlayPreview();
           });
         }
 
-        const overlayEl = card.querySelector(".caption-overlay-preview[data-overlay='true']");
-
-        const applyOverlayPreview = () => {
-          const txt = (itemsState[idx].caption || "").trim();
-          overlayEl.textContent = txt || " ";
-          overlayEl.classList.toggle("empty", !txt);
-
-          const fs = parseFloat(overlayFontScaleSel.value || "1.0");
-          const previewBasePx = 12; // purely visual; backend uses reel-size scaling
-          overlayEl.style.fontSize = Math.round(previewBasePx * fs) + "px";
-        };
-
         applyOverlayPreview();
-
-        // Keep preview overlay synced with textarea value.
-        if (capTa) {
-          capTa.addEventListener("input", () => applyOverlayPreview());
-        }
 
         const removeBtn = card.querySelector(".remove-btn");
         if (removeBtn) {
@@ -454,6 +514,8 @@
           source: "upload",
           file: f,
           kind: detectKindFromFile(f),
+          destination: "",
+          title: "",
           caption: "",
           name: f.name,
         });
@@ -483,12 +545,14 @@
             itemsJson.push({
               source: "upload",
               upload_index: upIndex,
+              title: it.title || "",
               caption: it.caption || "",
             });
           } else {
             itemsJson.push({
               source: "server",
               asset_id: it.asset_id,
+              title: it.title || "",
               caption: it.caption || "",
             });
           }
@@ -557,7 +621,7 @@
       const theme = (themeInput.value || "").trim();
       if (!theme) {
         autofillStatus.className = "status err";
-        autofillStatus.textContent = "Theme is required for auto-fill.";
+        autofillStatus.textContent = "Enter a theme or media brief for auto-fill.";
         return;
       }
 
@@ -568,23 +632,52 @@
       statusEl.textContent = "";
 
       try {
+        const t = theme.toLowerCase();
+        const AUTOFILL_CAP = 15;
+        const inferN = () => {
+          const patterns = [
+            /\btop\s+(\d+)\b/,
+            /\bbest\s+(\d+)\s+places\b/,
+            /(\d+)\s+best\s+places\b/,
+            /(\d+)\s+places\s+to\s+visit\b/,
+            /(\d+)\s+places\s+in\b/,
+            /must[\s-]see\s+(\d+)\b/,
+          ];
+          for (const p of patterns) {
+            const m = t.match(p);
+            if (m) {
+              const n = parseInt(m[1], 10);
+              if (n >= 1) return Math.min(AUTOFILL_CAP, n);
+            }
+          }
+          return null;
+        };
+        const nPlaces = inferN();
+        const maxItems = nPlaces != null ? nPlaces : 8;
+
         const res = await fetch("/api/upload-reel/autofill", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ theme, max_items: 8, include_video: true }),
+          body: JSON.stringify({ theme, max_items: maxItems, include_video: true }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
 
         const serverItems = data.items || [];
-        itemsState = serverItems.map((it) => ({
-          source: "server",
-          asset_id: it.asset_id,
-          kind: it.kind,
-          web_url: it.web_url,
-          caption: it.caption || "",
-          name: it.kind === "video" ? "Pexels video" : "Pexels image",
-        }));
+        itemsState = serverItems.map((it) => {
+          const dest = String(it.destination != null ? it.destination : "").trim();
+          const title = pexelsLocationTitle(it);
+          return {
+            source: "server",
+            asset_id: it.asset_id,
+            kind: it.kind,
+            web_url: it.web_url,
+            destination: dest,
+            title,
+            caption: it.caption || "",
+            name: dest || (it.kind === "video" ? "Pexels video" : "Pexels image"),
+          };
+        });
 
         filesInput.value = "";
         outVideo.removeAttribute("src");
@@ -592,7 +685,11 @@
         renderItems();
 
         autofillStatus.className = "status ok";
-        autofillStatus.textContent = `Loaded ${itemsState.length} items from Pexels.`;
+        const rankHint =
+          data.requested_destination_count != null
+            ? ` (top ${data.requested_destination_count} list)`
+            : "";
+        autofillStatus.textContent = `Loaded ${itemsState.length} items from Pexels${rankHint}.`;
       } catch (err) {
         autofillStatus.className = "status err";
         autofillStatus.textContent = String(err && err.message ? err.message : err);
