@@ -17,6 +17,11 @@ class PlaceInput(BaseModel):
     highlights: list[str] = Field(default_factory=list)
     best_query: str
     queries: list[str] = Field(default_factory=list)
+    caption_text: str = Field(
+        default="",
+        max_length=420,
+        description="Short on-reel blurb: why the place is famous / what it is.",
+    )
 
     @field_validator("name", "best_query")
     @classmethod
@@ -33,6 +38,14 @@ class PlaceInput(BaseModel):
             return []
         return [str(x).strip() for x in v if str(x).strip()]
 
+    @field_validator("caption_text", mode="before")
+    @classmethod
+    def caption_text_clean(cls, v: object) -> str:
+        if v is None:
+            return ""
+        s = " ".join(str(v).split()).strip()
+        return s[:420]
+
 
 class GroqPlacesResponse(BaseModel):
     places: list[PlaceInput] = Field(min_length=5, max_length=5)
@@ -44,6 +57,7 @@ class PlaceWithMedia(BaseModel):
     highlights: list[str] = Field(default_factory=list)
     best_query: str
     queries: list[str] = Field(default_factory=list)
+    caption_text: str = Field(default="", max_length=420)
     media: list[MediaItem] = Field(default_factory=list)
 
 
@@ -54,6 +68,7 @@ class GroqPlaceStructured(BaseModel):
     type: str
     highlights: list[str] = Field(default_factory=list)
     best_query: str
+    caption_text: str = Field(default="", max_length=420)
     queries: list[str] = Field(
         default_factory=list,
         description="Query strings from the model (excluding best_query).",

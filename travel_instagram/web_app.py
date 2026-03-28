@@ -688,6 +688,7 @@ async def api_upload_reel_generate(
     media_paths: list[Path] = []
     captions: list[str] = []
     titles: list[str] = []
+    caption_texts: list[str] = []
     overlay_positions: list[tuple[float, float]] = []
     overlay_font_scales: list[float] = []
     try:
@@ -759,6 +760,11 @@ async def api_upload_reel_generate(
             src = str(it.get("source") or "").strip()
             caption = str(it.get("caption") or "")
             title = str(it.get("title") or "").strip()
+            ct_raw = str(it.get("caption_text") or "").strip()
+            if it.get("show_caption_text") is False:
+                ct_raw = ""
+            if len(ct_raw) > 420:
+                ct_raw = ct_raw[:420]
             overlay_x = it.get("overlay_x", 0.5)
             overlay_y = it.get("overlay_y", 0.72)
             font_scale = it.get("font_scale", 1.0)
@@ -777,6 +783,7 @@ async def api_upload_reel_generate(
                 media_paths.append(cand)
                 captions.append(caption)
                 titles.append(title)
+                caption_texts.append(ct_raw)
                 overlay_positions.append((float(overlay_x), float(overlay_y)))
                 overlay_font_scales.append(float(font_scale))
             elif src == "upload":
@@ -790,6 +797,7 @@ async def api_upload_reel_generate(
                 media_paths.append(uploaded_paths[upload_index])
                 captions.append(caption)
                 titles.append(title)
+                caption_texts.append(ct_raw)
                 overlay_positions.append((float(overlay_x), float(overlay_y)))
                 overlay_font_scales.append(float(font_scale))
             elif src == "url":
@@ -869,6 +877,7 @@ async def api_upload_reel_generate(
                 media_paths.append(dest)
                 captions.append(caption)
                 titles.append(title)
+                caption_texts.append(ct_raw)
                 overlay_positions.append((float(overlay_x), float(overlay_y)))
                 overlay_font_scales.append(float(font_scale))
             else:
@@ -907,6 +916,7 @@ async def api_upload_reel_generate(
             overlay_positions=overlay_positions,
             overlay_font_scales=overlay_font_scales,
             titles=titles if items_json else None,
+            caption_texts=caption_texts if items_json else None,
             hook_caption=hook_caption,
             hook_seconds=hook_sec_f,
             image_segment_seconds=clip_img,

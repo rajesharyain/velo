@@ -505,6 +505,7 @@
             wrap.dataset.mediaType = m.type === "video" ? "video" : "image";
             const ext = m.type === "video" ? "mp4" : "jpg";
             wrap.dataset.filename = `${pslug}_${mi + 1}_${m.type}.${ext}`;
+            wrap.dataset.captionText = (place.caption_text != null ? String(place.caption_text) : "").trim();
 
             const tile = el("div", "media-tile");
             if (m.type === "video") {
@@ -542,6 +543,15 @@
             lab.appendChild(cb);
             lab.appendChild(document.createTextNode(" Use in reel"));
             actions.appendChild(lab);
+            const blurbLab = document.createElement("label");
+            const blurbCb = document.createElement("input");
+            blurbCb.type = "checkbox";
+            blurbCb.className = "adPlaceBlurb";
+            blurbCb.checked = !!(wrap.dataset.captionText || "").trim();
+            blurbCb.title = "Show AI place blurb under the location title on the reel";
+            blurbLab.appendChild(blurbCb);
+            blurbLab.appendChild(document.createTextNode(" Place blurb on reel"));
+            actions.appendChild(blurbLab);
             const dlBtn = el("button", null, "Download");
             dlBtn.type = "button";
             dlBtn.title = "Save file (or open in new tab if blocked)";
@@ -584,6 +594,13 @@
         bq.style.margin = "4px 0";
         bq.style.fontSize = "14px";
         block.appendChild(bq);
+
+        block.appendChild(el("h3", null, "caption_text (on-reel blurb)"));
+        const ct = el("p", null, (gp.caption_text || "").trim() || "—");
+        ct.style.margin = "4px 0";
+        ct.style.fontSize = "14px";
+        ct.style.lineHeight = "1.45";
+        block.appendChild(ct);
 
         block.appendChild(el("h3", null, "queries (from model)"));
         const qul = document.createElement("ul");
@@ -719,12 +736,17 @@
         const media_type = wrap.dataset.mediaType === "video" ? "video" : "image";
         if (!url) return;
         const placeTitle = (wrap.dataset.placeName || "").trim();
+        const blurbCb = wrap.querySelector(".adPlaceBlurb");
+        const showBlurb = blurbCb ? !!blurbCb.checked : true;
+        const rawBlurb = (wrap.dataset.captionText || "").trim();
         items.push({
           source: "url",
           url,
           media_type,
           caption: "",
           title: placeTitle,
+          caption_text: showBlurb ? rawBlurb : "",
+          show_caption_text: showBlurb,
         });
       });
       if (!items.length) {

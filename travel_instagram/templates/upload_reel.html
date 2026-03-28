@@ -56,6 +56,14 @@
       margin-bottom:3px;
       color:#fff;
     }
+    .caption-overlay-preview .ovl-sub {
+      display:block;
+      font-weight:600;
+      font-size:0.88em;
+      margin-bottom:3px;
+      color:#e8edf7;
+      line-height:1.15;
+    }
     .caption-overlay-preview .ovl-body {
       display:block;
       font-weight:600;
@@ -65,6 +73,7 @@
     }
     .caption-overlay-preview.empty { opacity:0.65; color:#b8c3db; }
     .caption-overlay-preview.empty .ovl-title,
+    .caption-overlay-preview.empty .ovl-sub,
     .caption-overlay-preview.empty .ovl-body { color:#b8c3db; }
     input[data-title-index] {
       width:100%;
@@ -164,7 +173,7 @@
     {% include "_nav.html" %}
     <div class="card">
       <h2 style="margin:0 0 10px;">Generate Reel from Images/Videos</h2>
-      <div class="muted">Upload files, set a <strong>location title</strong> (first line on the clip) and a <strong>caption</strong> (second line), then generate a 9:16 reel with FFmpeg.</div>
+      <div class="muted">Upload files, set a <strong>location title</strong> (top line), optional <strong>place blurb</strong> (one line under the title), and a <strong>caption</strong> (extra line below that), then generate a 9:16 reel.</div>
       <div class="muted" style="margin-top:6px;">Tip: drag and drop items below to reorder reel sequence.</div>
       <div style="margin-top:1rem;">
         <label for="themeInput" class="muted" style="display:block; font-weight:700; margin-bottom:6px;">Media brief (Groq → Pexels)</label>
@@ -352,7 +361,7 @@
     const resultEl = document.getElementById("result");
     const outVideo = document.getElementById("outVideo");
     const meta = document.getElementById("meta");
-    let itemsState = []; // {source, kind, asset_id?, file?, web_url?, title, caption}
+    let itemsState = []; // {source, kind, asset_id?, file?, web_url?, title, caption_text, show_caption_text, caption}
     let tracksList = [];
     let firstTrackId = null;
 
@@ -475,6 +484,7 @@
               }
               <div class="caption-overlay-preview empty" data-overlay="true">
                 <span class="ovl-title"></span>
+                <span class="ovl-sub"></span>
                 <span class="ovl-body"></span>
               </div>
             </div>
@@ -486,7 +496,13 @@
               }</div>
               <label class="muted" style="display:block;font-size:12px;margin-bottom:4px;">Location (title on image)</label>
               <input type="text" data-title-index="${idx}" placeholder="e.g. Lisbon, Portugal" autocomplete="off" />
-              <label class="muted" style="display:block;font-size:12px;margin:8px 0 4px;">Caption (line below title)</label>
+              <label class="muted" style="display:block;font-size:12px;margin:8px 0 4px;">Place blurb (under title — why it&apos;s famous / what it is)</label>
+              <textarea data-place-blurb-index="${idx}" rows="2" placeholder="Optional; e.g. Portugal&apos;s hilly coastal capital, known for trams and Belém."></textarea>
+              <label style="display:flex;align-items:center;gap:8px;margin:6px 0 4px;font-size:12px;color:#9ca8bf;cursor:pointer;">
+                <input type="checkbox" data-show-blurb-index="${idx}" checked />
+                Show place blurb on reel
+              </label>
+              <label class="muted" style="display:block;font-size:12px;margin:8px 0 4px;">Caption (line below blurb)</label>
               <textarea data-caption-index="${idx}" placeholder="Describe this shot..."></textarea>
             </div>
             <div style="display:flex; align-items:flex-start;">
@@ -495,17 +511,24 @@
           </div>
         `;
         const titleIn = card.querySelector(`input[data-title-index="${idx}"]`);
+        const blurbTa = card.querySelector(`textarea[data-place-blurb-index="${idx}"]`);
+        const showBlurbCb = card.querySelector(`input[data-show-blurb-index="${idx}"]`);
         const capTa = card.querySelector(`textarea[data-caption-index="${idx}"]`);
         const overlayEl = card.querySelector(".caption-overlay-preview[data-overlay='true']");
         const ovlTitle = overlayEl && overlayEl.querySelector(".ovl-title");
+        const ovlSub = overlayEl && overlayEl.querySelector(".ovl-sub");
         const ovlBody = overlayEl && overlayEl.querySelector(".ovl-body");
 
         const applyOverlayPreview = () => {
           const t = (itemsState[idx].title || "").trim();
+          const sraw = (itemsState[idx].caption_text || "").trim();
+          const showS = itemsState[idx].show_caption_text !== false;
+          const s = showS ? sraw : "";
           const b = (itemsState[idx].caption || "").trim();
           if (ovlTitle) ovlTitle.textContent = t || "";
+          if (ovlSub) ovlSub.textContent = s || "";
           if (ovlBody) ovlBody.textContent = b || "";
-          const has = !!(t || b);
+          const has = !!(t || s || b);
           if (overlayEl) {
             overlayEl.classList.toggle("empty", !has);
             const fs = parseFloat(overlayFontScaleSel.value || "1.0");
@@ -515,10 +538,24 @@
         };
 
         if (titleIn) titleIn.value = it.title || "";
+        if (blurbTa) blurbTa.value = it.caption_text || "";
+        if (showBlurbCb) showBlurbCb.checked = itemsState[idx].show_caption_text !== false;
         if (capTa) capTa.value = it.caption || "";
         if (titleIn) {
           titleIn.addEventListener("input", () => {
             itemsState[idx].title = titleIn.value || "";
+            applyOverlayPreview();
+          });
+        }
+        if (blurbTa) {
+          blurbTa.addEventListener("input", () => {
+            itemsState[idx].caption_text = blurbTa.value || "";
+            applyOverlayPreview();
+          });
+        }
+        if (showBlurbCb) {
+          showBlurbCb.addEventListener("change", () => {
+            itemsState[idx].show_caption_text = !!showBlurbCb.checked;
             applyOverlayPreview();
           });
         }
@@ -575,6 +612,8 @@
           kind: detectKindFromFile(f),
           destination: "",
           title: "",
+          caption_text: "",
+          show_caption_text: true,
           caption: "",
           name: f.name,
         });
@@ -605,6 +644,8 @@
               source: "upload",
               upload_index: upIndex,
               title: it.title || "",
+              caption_text: (it.caption_text || "").trim(),
+              show_caption_text: it.show_caption_text !== false,
               caption: it.caption || "",
             });
           } else {
@@ -612,6 +653,8 @@
               source: "server",
               asset_id: it.asset_id,
               title: it.title || "",
+              caption_text: (it.caption_text || "").trim(),
+              show_caption_text: it.show_caption_text !== false,
               caption: it.caption || "",
             });
           }
@@ -760,6 +803,8 @@
             web_url: it.web_url,
             destination: dest,
             title,
+            caption_text: "",
+            show_caption_text: true,
             caption: it.caption || "",
             name: dest || (it.kind === "video" ? "Pexels video" : "Pexels image"),
           };

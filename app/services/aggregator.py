@@ -68,6 +68,7 @@ def _ensure_five_places(raw: list[dict]) -> list[PlaceInput]:
                 type="region",
                 highlights=["scenic views", "local culture", "landmarks"],
                 best_query=f"beautiful travel destination {n} aerial coastline",
+                caption_text="A scenic travel destination known for views, culture, and landmarks.",
                 queries=[
                     f"destination {n} historic architecture",
                     f"destination {n} sunset waterfront",
@@ -158,6 +159,7 @@ def _merge_results(
                 type=place.type,
                 highlights=place.highlights,
                 best_query=place.best_query,
+                caption_text=place.caption_text,
                 queries=[q for q in pool if q != pool[0]] if pool else place.queries,
                 media=media_items,
             )
@@ -272,6 +274,7 @@ async def aggregate_travel_media(
             type=p.type,
             highlights=list(p.highlights),
             best_query=p.best_query,
+            caption_text=p.caption_text,
             queries=list(p.queries),
             query_pool=_query_pool(p),
         )

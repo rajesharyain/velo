@@ -27,6 +27,7 @@ You MUST return this exact shape:
       "type": "city|region|island|area|landmark_area",
       "highlights": ["short highlight 1", "short highlight 2", "short highlight 3"],
       "best_query": "single best English line for stock photo search",
+      "caption_text": "1-2 factual sentences: what this place is and why travelers care (no hashtags, no query keywords).",
       "queries": ["query1", "query2", "query3", "query4"]
     }
   ]
@@ -34,6 +35,7 @@ You MUST return this exact shape:
 
 Hard rules:
 - Always return EXACTLY 5 objects in "places".
+- "caption_text": required on every place. One or two sentences, max ~280 characters, plain English. Use accurate world knowledge (identity, fame, vibe). Do not repeat the title alone; do not list search keywords. This may appear as on-video text under the location name.
 - Each place must have 4 to 6 strings in "queries" (inclusive). "best_query" is separate and MUST NOT be duplicated inside "queries".
 - Every query string must: include the place or area name (or unambiguous local name), mention a landmark OR vibe from highlights OR a visual scene, and include at least one visual keyword when natural (e.g. sunset, aerial, drone, waterfront, night, historic, coastline, architecture).
 - "best_query" should be the single strongest 4–10 word English stock-search line for that place (location + iconic visual).
