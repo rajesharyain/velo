@@ -260,40 +260,38 @@ def _draw_map_pin(
 
 def _draw_reel_brand_badge(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
     """
-    Bottom-centered domain text, no background — bright yellow with dark stroke for visibility
-    (sits above typical in-app reel chrome).
+    Top-right domain text, no background — bright yellow with black stroke for visibility.
     """
     text = (getattr(config, "REEL_BRAND_TEXT", "") or "").strip()
     if not text:
         return
     font_size = max(22, min(40, int(h * 0.024)))
     font = _try_overlay_font_stack(_BODY_FONT_STACK, font_size)
-    margin_bottom = max(32, int(h * 0.13))
+    margin_x = max(14, int(w * 0.035))
+    margin_y = max(18, int(h * 0.026))
     sw = max(2, min(5, int(h * 0.0028)))
-    y_anchor = h - margin_bottom
     try:
         draw.text(
-            (w // 2, y_anchor),
+            (w - margin_x, margin_y),
             text,
             font=font,
             fill=(255, 234, 60, 255),
             stroke_width=sw,
-            stroke_fill=(0, 0, 0, 245),
-            anchor="mb",
+            stroke_fill=(0, 0, 0, 255),
+            anchor="rt",
         )
     except TypeError:
         bb = draw.textbbox((0, 0), text, font=font)
         tw = bb[2] - bb[0]
-        th = bb[3] - bb[1]
-        tx = (w - tw) // 2 - bb[0]
-        ty = y_anchor - th - bb[1]
+        tx = w - margin_x - tw - bb[0]
+        ty = margin_y - bb[1]
         draw.text(
             (tx, ty),
             text,
             font=font,
             fill=(255, 234, 60, 255),
             stroke_width=sw,
-            stroke_fill=(0, 0, 0, 245),
+            stroke_fill=(0, 0, 0, 255),
         )
 
 
@@ -387,6 +385,8 @@ def _render_caption_overlay(
 
     max_w = int(w * 0.84)
     line_gap = max(8, int(h * 0.008))
+    # Tighter leading for caption_text (place blurb) under the title
+    sub_line_gap = max(3, int(h * 0.0042))
     title_body_gap = max(10, int(h * 0.014))
     title_sub_gap = max(8, int(h * 0.011))
     pad_x = int(max(30, w * 0.06))
@@ -401,7 +401,7 @@ def _render_caption_overlay(
     if not title_t:
         sub_font = _try_overlay_font_stack(
             _BODY_FONT_STACK,
-            int(h * 0.034 * font_scale),
+            int(h * 0.0265 * font_scale),
         )
         body_font = _try_overlay_font_stack(
             _BODY_FONT_STACK,
@@ -422,7 +422,7 @@ def _render_caption_overlay(
             draw.textbbox((0, 0), ln, font=body_font)[3] - draw.textbbox((0, 0), ln, font=body_font)[1]
             for ln in body_lines
         ]
-        block_h = sum(sh) + max(0, len(sub_lines) - 1) * line_gap
+        block_h = sum(sh) + max(0, len(sub_lines) - 1) * sub_line_gap
         if body_lines:
             block_h += (title_sub_gap if sub_lines else 0) + sum(bh0) + max(0, len(body_lines) - 1) * line_gap
         block_w = 0
@@ -447,7 +447,7 @@ def _render_caption_overlay(
                 fill=CAPTION_OVERLAY_PANEL_RGBA,
             )
         cy_line = y0 + pad_y
-        sub_stroke = max(1, int(round(font_scale * 0.92)))
+        sub_stroke_strong = max(2, int(round(font_scale * 1.12)))
         body_stroke0 = max(1, int(round(font_scale * 0.85)))
         for ln in sub_lines:
             bb = draw.textbbox((0, 0), ln, font=sub_font)
@@ -457,14 +457,14 @@ def _render_caption_overlay(
                 (tx, cy_line),
                 ln,
                 font=sub_font,
-                fill=(238, 242, 250, 252),
-                stroke_width=sub_stroke,
-                stroke_fill=(0, 0, 0, 155),
+                fill=(248, 250, 255, 255),
+                stroke_width=sub_stroke_strong,
+                stroke_fill=(0, 0, 0, 255),
             )
-            cy_line += (bb[3] - bb[1]) + line_gap
+            cy_line += (bb[3] - bb[1]) + sub_line_gap
         if body_lines:
             if sub_lines:
-                cy_line += title_sub_gap - line_gap
+                cy_line += title_sub_gap - sub_line_gap
             for ln in body_lines:
                 bb = draw.textbbox((0, 0), ln, font=body_font)
                 tw = bb[2] - bb[0]
@@ -489,7 +489,7 @@ def _render_caption_overlay(
     )
     subtitle_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.034 * font_scale),
+        int(h * 0.0265 * font_scale),
     )
     body_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
@@ -522,7 +522,7 @@ def _render_caption_overlay(
     ]
     block_h = sum(th) + max(0, len(title_lines) - 1) * line_gap
     if sub_lines:
-        block_h += title_sub_gap + sum(sh) + max(0, len(sub_lines) - 1) * line_gap
+        block_h += title_sub_gap + sum(sh) + max(0, len(sub_lines) - 1) * sub_line_gap
     if body_lines:
         block_h += title_body_gap + sum(bh) + max(0, len(body_lines) - 1) * line_gap
 
@@ -562,7 +562,7 @@ def _render_caption_overlay(
     text_x0 = inner_left + pin_col_w + pin_gap
     pin_cx_title = inner_left + rx_o_pin + 3
     title_stroke = max(1, int(round(font_scale * 1.05)))
-    sub_stroke = max(1, int(round(font_scale * 0.92)))
+    sub_stroke_strong = max(2, int(round(font_scale * 1.12)))
     body_stroke = max(1, int(round(font_scale * 0.85)))
     for ti, ln in enumerate(title_lines):
         bb = draw.textbbox((0, 0), ln, font=title_font)
@@ -590,14 +590,15 @@ def _render_caption_overlay(
                 (tx, cy_line),
                 ln,
                 font=subtitle_font,
-                fill=(238, 242, 250, 252),
-                stroke_width=sub_stroke,
-                stroke_fill=(0, 0, 0, 155),
+                fill=(248, 250, 255, 255),
+                stroke_width=sub_stroke_strong,
+                stroke_fill=(0, 0, 0, 255),
             )
-            cy_line += (bb[3] - bb[1]) + line_gap
+            cy_line += (bb[3] - bb[1]) + sub_line_gap
 
     if body_lines:
-        cy_line += title_body_gap - line_gap
+        gap_trim = sub_line_gap if sub_lines else line_gap
+        cy_line += title_body_gap - gap_trim
 
     for ln in body_lines:
         bb = draw.textbbox((0, 0), ln, font=body_font)
