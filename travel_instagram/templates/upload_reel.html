@@ -241,8 +241,8 @@
         </div>
         <div class="row" style="align-items:center; margin-top:8px;">
           <label for="overlayAnchorY" class="muted" style="margin:0; min-width:72px;">Vertical</label>
-          <input type="range" id="overlayAnchorY" min="5" max="88" value="10" step="1" style="flex:1;" title="Top ↔ bottom" />
-          <span id="overlayAnchorYVal" class="muted" style="min-width:40px; font-size:12px;">10%</span>
+          <input type="range" id="overlayAnchorY" min="5" max="88" value="20" step="1" style="flex:1;" title="Top ↔ bottom" />
+          <span id="overlayAnchorYVal" class="muted" style="min-width:40px; font-size:12px;">20%</span>
         </div>
       </div>
       <div style="margin-top:12px; max-width:640px;">
@@ -673,7 +673,7 @@
         fd.append("clip_seconds_image", (clipSecondsImageEl && clipSecondsImageEl.value) ? String(clipSecondsImageEl.value) : "3");
         fd.append("clip_seconds_video", (clipSecondsVideoEl && clipSecondsVideoEl.value) ? String(clipSecondsVideoEl.value) : "5");
         const oax = overlayAnchorX ? Math.max(5, Math.min(95, parseInt(overlayAnchorX.value, 10) || 50)) / 100 : 0.5;
-        const oay = overlayAnchorY ? Math.max(5, Math.min(88, parseInt(overlayAnchorY.value, 10) || 10)) / 100 : 0.1;
+        const oay = overlayAnchorY ? Math.max(5, Math.min(88, parseInt(overlayAnchorY.value, 10) || 20)) / 100 : 0.2;
         fd.append("overlay_anchor_x", oax.toFixed(3));
         fd.append("overlay_anchor_y", oay.toFixed(3));
         fd.append("overlay_font_scale", overlayFontScaleSel.value || "1.0");

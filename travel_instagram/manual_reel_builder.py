@@ -18,12 +18,12 @@ from travel_instagram import media_processor
 
 logger = logging.getLogger(__name__)
 
-# Caption backdrop on manual upload-reel overlays. None = text only (strokes still help readability).
-# Restore the previous pill: set to (8, 12, 22, 208) — dark blue-black at ~81% alpha.
-CAPTION_OVERLAY_PANEL_RGBA: tuple[int, int, int, int] | None = None
+# Rounded panel behind title/caption block on manual-reel overlays. None = no panel.
+# Alpha ~115 ≈ 45% opacity (was 208); tune 4th value 0–255 for more/less transparent.
+CAPTION_OVERLAY_PANEL_RGBA: tuple[int, int, int, int] | None = (8, 12, 22, 115)
 
-# Default text anchor for manual reels (horizontal center, upper band).
-DEFAULT_OVERLAY_ANCHOR: tuple[float, float] = (0.5, 0.10)
+# Default text anchor for manual reels (horizontal center, ~20% from top).
+DEFAULT_OVERLAY_ANCHOR: tuple[float, float] = (0.5, 0.20)
 
 # Google Fonts (OFL) — lazy-downloaded into ``travel_instagram/fonts/``.
 # Titles: cinematic / bold stack. Body: clean / screen-readable stack.
@@ -260,38 +260,39 @@ def _draw_map_pin(
 
 def _draw_reel_brand_badge(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
     """
-    Top-right domain text, no background — bright yellow with black stroke for visibility.
+    Dead center of frame — large white domain + dark stroke (readable on light and dark footage).
     """
     text = (getattr(config, "REEL_BRAND_TEXT", "") or "").strip()
     if not text:
         return
-    font_size = max(22, min(40, int(h * 0.024)))
+    font_size = max(30, min(52, int(h * 0.034)))
     font = _try_overlay_font_stack(_BODY_FONT_STACK, font_size)
-    margin_x = max(14, int(w * 0.035))
-    margin_y = max(18, int(h * 0.026))
-    sw = max(2, min(5, int(h * 0.0028)))
+    cx = w // 2
+    cy = h // 2
+    sw = max(2, min(7, int(h * 0.0028)))
+    fill = (255, 255, 255, 255)
+    stroke_fill = (0, 0, 0, 200)
     try:
         draw.text(
-            (w - margin_x, margin_y),
+            (cx, cy),
             text,
             font=font,
-            fill=(255, 234, 60, 255),
+            fill=fill,
             stroke_width=sw,
-            stroke_fill=(0, 0, 0, 255),
-            anchor="rt",
+            stroke_fill=stroke_fill,
+            anchor="mm",
         )
     except TypeError:
         bb = draw.textbbox((0, 0), text, font=font)
-        tw = bb[2] - bb[0]
-        tx = w - margin_x - tw - bb[0]
-        ty = margin_y - bb[1]
+        tx = int(cx - (bb[0] + bb[2]) / 2.0)
+        ty = int(cy - (bb[1] + bb[3]) / 2.0)
         draw.text(
             (tx, ty),
             text,
             font=font,
-            fill=(255, 234, 60, 255),
+            fill=fill,
             stroke_width=sw,
-            stroke_fill=(0, 0, 0, 255),
+            stroke_fill=stroke_fill,
         )
 
 
