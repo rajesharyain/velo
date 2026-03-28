@@ -18,12 +18,12 @@ from travel_instagram import media_processor
 
 logger = logging.getLogger(__name__)
 
-# Rounded panel behind title/caption block on manual-reel overlays. None = no panel.
-# Alpha ~115 ≈ 45% opacity (was 208); tune 4th value 0–255 for more/less transparent.
+# Rounded panel: only drawn when caption_text (on-reel blurb) is non-empty. Set to None to disable the panel everywhere.
+# Alpha ~115 ≈ 45% opacity; tune 4th value 0–255 for more/less transparent.
 CAPTION_OVERLAY_PANEL_RGBA: tuple[int, int, int, int] | None = (8, 12, 22, 115)
 
-# Default text anchor for manual reels (horizontal center, ~20% from top).
-DEFAULT_OVERLAY_ANCHOR: tuple[float, float] = (0.5, 0.20)
+# Default text anchor for manual reels (horizontal center, ~15% from top).
+DEFAULT_OVERLAY_ANCHOR: tuple[float, float] = (0.5, 0.15)
 
 # Google Fonts (OFL) — lazy-downloaded into ``travel_instagram/fonts/``.
 # Titles: cinematic / bold stack. Body: clean / screen-readable stack.
@@ -260,7 +260,7 @@ def _draw_map_pin(
 
 def _draw_reel_brand_badge(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
     """
-    Dead center of frame — large white domain + dark stroke (readable on light and dark footage).
+    Dead center of frame — drop shadow + white fill + stroke for legibility on any footage.
     """
     text = (getattr(config, "REEL_BRAND_TEXT", "") or "").strip()
     if not text:
@@ -272,7 +272,26 @@ def _draw_reel_brand_badge(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
     sw = max(2, min(7, int(h * 0.0028)))
     fill = (255, 255, 255, 255)
     stroke_fill = (0, 0, 0, 200)
+    off = max(2, min(6, int(h * 0.004)))
+    off2 = max(1, off - 1)
+    shadow_fill = (0, 0, 0, 185)
+    shadow_offsets = (
+        (off, off),
+        (off2, off2),
+        (off, 0),
+        (0, off),
+        (-off, off),
+        (off, -off2),
+    )
     try:
+        for ox, oy in shadow_offsets:
+            draw.text(
+                (cx + ox, cy + oy),
+                text,
+                font=font,
+                fill=shadow_fill,
+                anchor="mm",
+            )
         draw.text(
             (cx, cy),
             text,
@@ -286,6 +305,13 @@ def _draw_reel_brand_badge(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
         bb = draw.textbbox((0, 0), text, font=font)
         tx = int(cx - (bb[0] + bb[2]) / 2.0)
         ty = int(cy - (bb[1] + bb[3]) / 2.0)
+        for ox, oy in shadow_offsets:
+            draw.text(
+                (tx + ox, ty + oy),
+                text,
+                font=font,
+                fill=shadow_fill,
+            )
         draw.text(
             (tx, ty),
             text,
@@ -441,7 +467,7 @@ def _render_caption_overlay(
         y0 = int(round(cy - rect_h / 2.0))
         x0 = max(10, min(x0, w - rect_w - 10))
         y0 = max(10, min(y0, h - rect_h - 10))
-        if CAPTION_OVERLAY_PANEL_RGBA is not None:
+        if CAPTION_OVERLAY_PANEL_RGBA is not None and sub_t:
             draw.rounded_rectangle(
                 (x0, y0, x0 + rect_w, y0 + rect_h),
                 radius=int(min(34, h * 0.03)),
@@ -551,7 +577,7 @@ def _render_caption_overlay(
     x0 = max(10, min(x0, w - rect_w - 10))
     y0 = max(10, min(y0, h - rect_h - 10))
 
-    if CAPTION_OVERLAY_PANEL_RGBA is not None:
+    if CAPTION_OVERLAY_PANEL_RGBA is not None and sub_lines:
         draw.rounded_rectangle(
             (x0, y0, x0 + rect_w, y0 + rect_h),
             radius=int(min(34, h * 0.03)),

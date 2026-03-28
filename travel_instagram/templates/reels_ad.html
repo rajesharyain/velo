@@ -237,8 +237,8 @@
             <input type="range" id="adOverlayAnchorX" min="5" max="95" value="50" step="1" style="width:120px;" />
             <span id="adOverlayAnchorXVal" class="muted" style="font-size:11px; min-width:36px;">50%</span>
             <label for="adOverlayAnchorY" style="margin:0; font-size:12px;">V</label>
-            <input type="range" id="adOverlayAnchorY" min="5" max="88" value="20" step="1" style="width:120px;" />
-            <span id="adOverlayAnchorYVal" class="muted" style="font-size:11px; min-width:36px;">20%</span>
+            <input type="range" id="adOverlayAnchorY" min="5" max="88" value="15" step="1" style="width:120px;" />
+            <span id="adOverlayAnchorYVal" class="muted" style="font-size:11px; min-width:36px;">15%</span>
           </div>
           <div style="margin-top:12px;">
             <label for="adHookCaption">Opening hook — first clip only (optional)</label>
@@ -771,7 +771,7 @@
       fd.append("clip_seconds_image", (adClipSecondsImage && adClipSecondsImage.value) ? String(adClipSecondsImage.value) : "3");
       fd.append("clip_seconds_video", (adClipSecondsVideo && adClipSecondsVideo.value) ? String(adClipSecondsVideo.value) : "5");
       const adox = adOverlayAnchorX ? Math.max(5, Math.min(95, parseInt(adOverlayAnchorX.value, 10) || 50)) / 100 : 0.5;
-      const adoy = adOverlayAnchorY ? Math.max(5, Math.min(88, parseInt(adOverlayAnchorY.value, 10) || 20)) / 100 : 0.2;
+      const adoy = adOverlayAnchorY ? Math.max(5, Math.min(88, parseInt(adOverlayAnchorY.value, 10) || 15)) / 100 : 0.15;
       fd.append("overlay_anchor_x", adox.toFixed(3));
       fd.append("overlay_anchor_y", adoy.toFixed(3));
       fd.append("overlay_font_scale", "1.0");

@@ -657,7 +657,7 @@ async def api_upload_reel_generate(
     clip_seconds_image: str = Form(default="3"),
     clip_seconds_video: str = Form(default="5"),
     overlay_anchor_x: str = Form(default="0.5"),
-    overlay_anchor_y: str = Form(default="0.2"),
+    overlay_anchor_y: str = Form(default="0.15"),
 ) -> JSONResponse:
     if music_track_id == "__auto__":
         music_track_id = None
@@ -729,9 +729,9 @@ async def api_upload_reel_generate(
     except ValueError:
         oax = 0.5
     try:
-        oay = float((overlay_anchor_y or "0.2").strip() or "0.2")
+        oay = float((overlay_anchor_y or "0.15").strip() or "0.15")
     except ValueError:
-        oay = 0.2
+        oay = 0.15
     oax = max(0.05, min(0.95, oax))
     oay = max(0.05, min(0.92, oay))
 
@@ -767,7 +767,7 @@ async def api_upload_reel_generate(
             if len(ct_raw) > 420:
                 ct_raw = ct_raw[:420]
             overlay_x = it.get("overlay_x", 0.5)
-            overlay_y = it.get("overlay_y", 0.2)
+            overlay_y = it.get("overlay_y", 0.15)
             font_scale = it.get("font_scale", 1.0)
 
             if src == "server":
