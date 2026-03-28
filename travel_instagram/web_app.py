@@ -12,17 +12,23 @@ Or::
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import logging
+import re
+import secrets
+import shutil
+import zipfile
+from urllib.parse import unquote
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import httpx
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from openpyxl import Workbook
 from pydantic import BaseModel, Field
@@ -36,12 +42,16 @@ from travel_instagram import pipeline
 from travel_instagram import groq_service
 from travel_instagram import manual_reel_builder
 from travel_instagram import manual_reel_autofill
+from travel_instagram import media_processor
 from travel_instagram import mcp_reel_tool
 from travel_instagram import reels_catalog
 from travel_instagram.instagram_post_export import safe_carousel_run_dir
 from travel_instagram.instapost.router import router as instapost_router
 
 logger = logging.getLogger(__name__)
+
+# Reels AD / items_json: remote URL downloads per manual-reel build
+_AD_REEL_MAX_URL_ITEMS = 28
 
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
@@ -155,6 +165,249 @@ class AutofillReelMediaBody(BaseModel):
     include_video: bool = Field(default=True, description="Download portrait videos too.")
 
 
+class AdReelsZipItem(BaseModel):
+    url: str = Field(..., min_length=8, max_length=4000)
+    filename: str = Field(..., min_length=1, max_length=512)
+
+
+class AdReelsZipBody(BaseModel):
+    items: list[AdReelsZipItem] = Field(..., min_length=1, max_length=32)
+
+
+class AdReelsLibrarySaveBody(BaseModel):
+    """Persist prompt + travel-media snapshot: downloads clips into ``output/ad_reels_library/``."""
+
+    model_config = {"extra": "ignore"}
+
+    mode: Literal["all", "selected"] = "selected"
+    selected_urls: list[str] = Field(default_factory=list, max_length=80)
+    query: str = Field(default="", max_length=2000)
+    tags: list[str] = Field(default_factory=list, max_length=8)
+    orientation: str | None = Field(default=None, max_length=32)
+    places: list[dict[str, Any]] = Field(default_factory=list)
+    groq_places: list[dict[str, Any]] = Field(default_factory=list)
+    search_plan: list[dict[str, Any]] = Field(default_factory=list)
+    user_query: str = Field(default="", max_length=2000)
+    groq_model: str | None = None
+    pexels_calls_used: int = 0
+    cache_hits: int = 0
+
+
+_AD_REELS_LIB_MAX_FILES = 40
+_SESSION_ID_SAFE = re.compile(r"^[a-zA-Z0-9._-]+$")
+
+
+def _resolve_local_media_path(url: str) -> Path | None:
+    """If ``url`` is a served ``/media/...`` path, return the file under ``OUTPUT_DIR``."""
+    u = (url or "").strip()
+    if not u.startswith("/media/"):
+        return None
+    rel = unquote(u[len("/media/") :].lstrip("/"))
+    if not rel or ".." in rel.split("/"):
+        return None
+    p = (config.OUTPUT_DIR / rel).resolve()
+    try:
+        p.relative_to(config.OUTPUT_DIR.resolve())
+    except ValueError:
+        return None
+    return p if p.is_file() else None
+
+
+def _normalize_remote_media_url(url: str) -> str:
+    u = (url or "").strip()
+    if not u:
+        return ""
+    return u.split("?", 1)[0].rstrip("/")
+
+
+def _find_ad_reels_library_local_path(remote_url: str) -> Path | None:
+    """
+    If ``remote_url`` matches a clip saved under ``output/ad_reels_library/``, return that file.
+
+    Used so "Build reel" copies from disk instead of hitting Pexels again when the user
+    has already saved the session (or the same URL exists in an older session).
+    """
+    raw = (remote_url or "").strip()
+    if not raw.startswith(("http://", "https://")):
+        return None
+    lib = config.AD_REELS_LIBRARY_DIR.resolve()
+    if not lib.is_dir():
+        return None
+
+    target_norm = _normalize_remote_media_url(raw)
+
+    subdirs = [p for p in lib.iterdir() if p.is_dir()]
+    subdirs.sort(key=lambda p: p.name, reverse=True)
+    for sess in subdirs[:120]:
+        sj = sess / "session.json"
+        if not sj.is_file():
+            continue
+        try:
+            doc = json.loads(sj.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError):
+            continue
+        for place in doc.get("places") or []:
+            if not isinstance(place, dict):
+                continue
+            for m in place.get("media") or []:
+                if not isinstance(m, dict):
+                    continue
+                ru = str(m.get("remote_url") or "").strip()
+                if not ru:
+                    continue
+                if _normalize_remote_media_url(ru) != target_norm and ru.rstrip("/") != raw.rstrip("/"):
+                    continue
+                media_url = str(m.get("url") or "").strip()
+                if not media_url.startswith("/media/"):
+                    continue
+                p = _resolve_local_media_path(media_url)
+                if p is not None and p.is_file():
+                    return p
+
+    # Library filenames embed sha256(remote_url)[:10] from save time.
+    digest_candidates = {target_norm, raw}
+    hits: list[Path] = []
+    for cand in digest_candidates:
+        if not cand:
+            continue
+        d10 = hashlib.sha256(cand.encode("utf-8")).hexdigest()[:10]
+        for ext in (".jpg", ".jpeg", ".png", ".webp", ".mp4", ".webm", ".mov", ".m4v"):
+            for p in lib.rglob(f"*_{d10}{ext}"):
+                if p.is_file():
+                    hits.append(p)
+    if hits:
+        return max(hits, key=lambda p: p.stat().st_mtime_ns)
+    return None
+
+
+def _slug_fs_segment(name: str, max_len: int = 44) -> str:
+    t = re.sub(r"[^\w\-]+", "_", (name or "place").strip())
+    return (t or "place")[:max_len]
+
+
+def _zip_ad_reels_items_sync(items: list[tuple[str, str]]) -> bytes:
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        with httpx.Client(timeout=120.0, follow_redirects=True) as client:
+            for i, (url, filename) in enumerate(items):
+                safe = Path(filename).name or f"file_{i}"
+                arc = f"{i:02d}_{safe}"
+                local = _resolve_local_media_path(url)
+                if local is not None:
+                    zf.write(local, arcname=arc)
+                else:
+                    r = client.get(url)
+                    r.raise_for_status()
+                    zf.writestr(arc, r.content)
+    return buf.getvalue()
+
+
+async def _persist_ad_reels_library(body: AdReelsLibrarySaveBody) -> dict[str, Any]:
+    config.ensure_output_dirs()
+    lib_root = config.AD_REELS_LIBRARY_DIR.resolve()
+    lib_root.mkdir(parents=True, exist_ok=True)
+    session_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ") + "_" + secrets.token_hex(4)
+    session_dir = (lib_root / session_id).resolve()
+    try:
+        session_dir.relative_to(lib_root)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid library path.") from e
+    session_dir.mkdir(parents=True, exist_ok=True)
+
+    selected_set = {u.strip() for u in body.selected_urls if u.strip()}
+    places_out: list[dict[str, Any]] = []
+    n_saved = 0
+
+    for pi, place in enumerate(body.places):
+        if not isinstance(place, dict):
+            continue
+        if n_saved >= _AD_REELS_LIB_MAX_FILES:
+            break
+        pname = str(place.get("name") or f"place_{pi}")
+        pslug = _slug_fs_segment(pname) + f"_{pi:02d}"
+        media_in = list(place.get("media") or [])
+        media_out: list[dict[str, Any]] = []
+
+        for mi, m in enumerate(media_in):
+            if n_saved >= _AD_REELS_LIB_MAX_FILES:
+                break
+            if not isinstance(m, dict):
+                continue
+            url = str(m.get("url") or "").strip()
+            if not url:
+                continue
+            if body.mode == "selected" and url not in selected_set:
+                continue
+
+            mtype = str(m.get("type") or "image").lower()
+            ext = ".mp4" if mtype == "video" else ".jpg"
+            low = url.split("?", 1)[0].lower()
+            for cand in (".mp4", ".webm", ".mov", ".m4v", ".jpg", ".jpeg", ".png", ".webp"):
+                if low.endswith(cand):
+                    ext = cand
+                    break
+            digest = hashlib.sha256(url.encode("utf-8")).hexdigest()[:10]
+            fname = f"{mtype}_{mi:02d}_{digest}{ext}"
+            rel = Path("ad_reels_library") / session_id / pslug / fname
+            dest = (config.OUTPUT_DIR / rel).resolve()
+            try:
+                dest.relative_to(config.OUTPUT_DIR.resolve())
+            except ValueError as e:
+                raise HTTPException(status_code=400, detail="Invalid media path.") from e
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            local_src = _resolve_local_media_path(url)
+            if local_src is not None:
+                await asyncio.to_thread(shutil.copy2, local_src, dest)
+            else:
+                await asyncio.to_thread(media_processor.download_binary, url, dest)
+            if not dest.is_file() or dest.stat().st_size == 0:
+                continue
+            n_saved += 1
+            entry = dict(m)
+            entry["url"] = "/media/" + rel.as_posix()
+            entry["remote_url"] = url
+            media_out.append(entry)
+
+        if media_out:
+            po = dict(place)
+            po["media"] = media_out
+            places_out.append(po)
+
+    if not places_out:
+        try:
+            session_dir.rmdir()
+        except OSError:
+            pass
+        raise HTTPException(
+            status_code=400,
+            detail="Nothing was saved. For “selected”, tick clips and try again; for “all”, ensure media is loaded.",
+        )
+
+    doc: dict[str, Any] = {
+        "schema_version": 1,
+        "session_id": session_id,
+        "saved_at": datetime.now(timezone.utc).isoformat(),
+        "request": {
+            "query": body.query,
+            "tags": body.tags,
+            "orientation": body.orientation,
+        },
+        "user_query": body.user_query or body.query,
+        "places": places_out,
+        "groq_places": body.groq_places,
+        "search_plan": body.search_plan,
+        "groq_model": body.groq_model,
+        "pexels_calls_used": body.pexels_calls_used,
+        "cache_hits": body.cache_hits,
+    }
+    (session_dir / "session.json").write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    return {
+        "session_id": session_id,
+        "open_url": f"/ad-reels?session={session_id}",
+        "library_url": "/ad-reels/library",
+    }
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -243,6 +496,103 @@ async def api_ad_reels_travel_media(body: TravelMediaRequest) -> TravelMediaResp
         raise HTTPException(status_code=502, detail=f"Upstream error: {e}") from e
 
 
+@app.get("/ad-reels/library", response_class=HTMLResponse)
+async def ad_reels_library_page(request: Request) -> HTMLResponse:
+    """List saved Reels AD sessions (local media + stored prompt)."""
+    return templates.TemplateResponse(
+        "ad_reels_library.html",
+        {
+            "request": request,
+            "title": "Reels AD — Saved sessions",
+            "nav_active": "ad_reels_library",
+        },
+    )
+
+
+@app.post("/api/ad-reels/library/save")
+async def api_ad_reels_library_save(body: AdReelsLibrarySaveBody) -> JSONResponse:
+    """Download selected or all remote clips into ``output/ad_reels_library/<session>/`` and write ``session.json``."""
+    if not body.places:
+        raise HTTPException(status_code=400, detail="places is required (run Fetch media first).")
+    try:
+        meta = await _persist_ad_reels_library(body)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception("ad-reels library save failed")
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return JSONResponse(content=meta)
+
+
+@app.get("/api/ad-reels/library")
+async def api_ad_reels_library_list() -> JSONResponse:
+    config.ensure_output_dirs()
+    lib = config.AD_REELS_LIBRARY_DIR
+    sessions: list[dict[str, Any]] = []
+    if lib.is_dir():
+        for d in sorted(lib.iterdir(), key=lambda x: x.name, reverse=True):
+            if not d.is_dir():
+                continue
+            meta_path = d / "session.json"
+            if not meta_path.is_file():
+                continue
+            try:
+                doc = json.loads(meta_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            req = doc.get("request") or {}
+            sessions.append(
+                {
+                    "session_id": doc.get("session_id", d.name),
+                    "saved_at": doc.get("saved_at", ""),
+                    "query": req.get("query", ""),
+                }
+            )
+    return JSONResponse(content={"sessions": sessions})
+
+
+@app.get("/api/ad-reels/library/{session_id}")
+async def api_ad_reels_library_get(session_id: str) -> JSONResponse:
+    if not _SESSION_ID_SAFE.match(session_id):
+        raise HTTPException(status_code=400, detail="Invalid session id.")
+    lib_root = config.AD_REELS_LIBRARY_DIR.resolve()
+    p = (lib_root / session_id / "session.json").resolve()
+    try:
+        p.relative_to(lib_root)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail="Invalid session path.") from e
+    if not p.is_file():
+        raise HTTPException(status_code=404, detail="Session not found.")
+    try:
+        doc = json.loads(p.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as e:
+        raise HTTPException(status_code=500, detail="Corrupt session file.") from e
+    return JSONResponse(content=doc)
+
+
+@app.post("/api/ad-reels/library/zip")
+async def api_ad_reels_library_zip(body: AdReelsZipBody) -> Response:
+    """ZIP remote Pexels URLs (e.g. all or selected tiles) for one browser download."""
+    pairs = [(it.url.strip(), it.filename.strip()) for it in body.items if it.url.strip()]
+    if not pairs:
+        raise HTTPException(status_code=400, detail="No URLs to zip.")
+    try:
+        raw = await asyncio.to_thread(_zip_ad_reels_items_sync, pairs)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=502, detail=f"Download failed: {e}") from e
+    except Exception as e:
+        logger.exception("ad-reels zip failed")
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Response(
+        content=raw,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="ad-reels_{ts}.zip"',
+        },
+    )
+
+
 @app.post("/api/mcp-reels/generate")
 async def api_mcp_reels_generate(body: McpReelBody) -> JSONResponse:
     prompt = (body.prompt or "").strip()
@@ -298,9 +648,14 @@ async def api_upload_reel_generate(
     captions_json: str = Form(default="[]"),
     items_json: str = Form(default=""),
     music_track_id: str | None = Form(default=None),
-    transition_type: str = Form(default="auto"),
-    transition_speed: str = Form(default="auto"),
+    transition_type: str = Form(default="slideleft"),
+    transition_speed: str = Form(default="default"),
+    transition_xfade_scale: str | None = Form(default=None),
     overlay_font_scale: str = Form(default="1.0"),
+    hook_caption: str = Form(default=""),
+    hook_seconds: str = Form(default="3"),
+    clip_seconds_image: str = Form(default="3"),
+    clip_seconds_video: str = Form(default="5"),
 ) -> JSONResponse:
     if music_track_id == "__auto__":
         music_track_id = None
@@ -339,6 +694,33 @@ async def api_upload_reel_generate(
         requested_font_scale = 1.0
     requested_font_scale = max(0.6, min(1.7, requested_font_scale))
 
+    xfade_scale_opt: float | None = None
+    if transition_xfade_scale is not None and str(transition_xfade_scale).strip() != "":
+        try:
+            xfade_scale_opt = float(str(transition_xfade_scale).strip())
+        except ValueError:
+            xfade_scale_opt = None
+    if xfade_scale_opt is not None:
+        xfade_scale_opt = max(0.45, min(1.65, xfade_scale_opt))
+
+    hook_sec_f = 3.0
+    try:
+        hook_sec_f = float((hook_seconds or "3").strip() or "3")
+    except ValueError:
+        hook_sec_f = 3.0
+    hook_sec_f = max(0.5, min(12.0, hook_sec_f))
+
+    try:
+        clip_img = float((clip_seconds_image or "3").strip() or "3")
+    except ValueError:
+        clip_img = 3.0
+    try:
+        clip_vid = float((clip_seconds_video or "5").strip() or "5")
+    except ValueError:
+        clip_vid = 5.0
+    clip_img = max(0.5, min(90.0, clip_img))
+    clip_vid = max(0.5, min(90.0, clip_vid))
+
     if items_json:
         try:
             parsed_items = json.loads(items_json)
@@ -346,6 +728,17 @@ async def api_upload_reel_generate(
             raise HTTPException(status_code=400, detail="Invalid items_json payload.") from e
         if not isinstance(parsed_items, list) or not parsed_items:
             raise HTTPException(status_code=400, detail="items_json must be a non-empty list.")
+
+        _url_n = sum(
+            1
+            for x in parsed_items
+            if isinstance(x, dict) and str(x.get("source") or "").strip().lower() == "url"
+        )
+        if _url_n > _AD_REEL_MAX_URL_ITEMS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"At most {_AD_REEL_MAX_URL_ITEMS} url items per reel (got {_url_n}).",
+            )
 
         for it in parsed_items:
             if not isinstance(it, dict):
@@ -386,6 +779,85 @@ async def api_upload_reel_generate(
                 titles.append(title)
                 overlay_positions.append((float(overlay_x), float(overlay_y)))
                 overlay_font_scales.append(float(font_scale))
+            elif src == "url":
+                raw_url = str(it.get("url") or "").strip()
+                if not raw_url:
+                    raise HTTPException(status_code=400, detail="Missing url for url item.")
+                mtype = str(it.get("media_type") or it.get("type") or "image").lower().strip()
+                if mtype not in ("image", "video"):
+                    mtype = "image"
+                digest = hashlib.sha256(raw_url.encode("utf-8")).hexdigest()[:12]
+
+                if raw_url.startswith("/media/"):
+                    local_src = _resolve_local_media_path(raw_url)
+                    if local_src is None or not local_src.is_file():
+                        raise HTTPException(
+                            status_code=404,
+                            detail=f"Local media not found (save the session first or check path): {raw_url[:160]}",
+                        )
+                    ext = local_src.suffix.lower() or (".mp4" if mtype == "video" else ".jpg")
+                    name = f"local_{len(media_paths):02d}_{digest}{ext}"
+                    dest = temp_dir / name
+                    await asyncio.to_thread(shutil.copy2, local_src, dest)
+                elif raw_url.startswith(("https://", "http://")):
+                    base = raw_url.split("?", 1)[0].lower()
+                    if mtype == "video":
+                        ext = ".mp4"
+                        for cand in (".mp4", ".webm", ".mov", ".m4v"):
+                            if base.endswith(cand):
+                                ext = cand
+                                break
+                    else:
+                        ext = ".jpg"
+                        for cand in (".jpg", ".jpeg", ".png", ".webp"):
+                            if base.endswith(cand):
+                                ext = cand
+                                break
+                    lib_hit = await asyncio.to_thread(_find_ad_reels_library_local_path, raw_url)
+                    if lib_hit is not None:
+                        lext = lib_hit.suffix.lower()
+                        if lext in (
+                            ".jpg",
+                            ".jpeg",
+                            ".png",
+                            ".webp",
+                            ".mp4",
+                            ".webm",
+                            ".mov",
+                            ".m4v",
+                        ):
+                            ext = lext
+                    name = f"url_{len(media_paths):02d}_{digest}{ext}"
+                    dest = temp_dir / name
+                    if lib_hit is not None:
+                        await asyncio.to_thread(shutil.copy2, lib_hit, dest)
+                    else:
+                        try:
+                            await asyncio.to_thread(
+                                media_processor.download_binary,
+                                raw_url,
+                                dest,
+                            )
+                        except Exception as e:
+                            raise HTTPException(
+                                status_code=502,
+                                detail=f"Failed to download media URL: {e}",
+                            ) from e
+                    if not dest.is_file() or dest.stat().st_size == 0:
+                        raise HTTPException(
+                            status_code=502,
+                            detail="Media file missing or empty after copy/download.",
+                        )
+                else:
+                    raise HTTPException(
+                        status_code=400,
+                        detail="url must be http(s), or /media/... pointing at a file under output.",
+                    )
+                media_paths.append(dest)
+                captions.append(caption)
+                titles.append(title)
+                overlay_positions.append((float(overlay_x), float(overlay_y)))
+                overlay_font_scales.append(float(font_scale))
             else:
                 raise HTTPException(status_code=400, detail=f"Unknown item source: {src!r}")
     else:
@@ -399,11 +871,11 @@ async def api_upload_reel_generate(
 
         media_paths = list(uploaded_paths)
         # Legacy mode: keep previous default bottom-center caption placement.
-        overlay_positions = [(0.5, 0.5)] * len(media_paths)
+        overlay_positions = [manual_reel_builder.DEFAULT_OVERLAY_ANCHOR] * len(media_paths)
         overlay_font_scales = [requested_font_scale] * len(media_paths)
 
-    # Editor currently enforces centered overlay placement.
-    overlay_positions = [(0.5, 0.5)] * len(media_paths)
+    # Middle-upper safe band for title + caption (Google Fonts overlay in manual_reel_builder).
+    overlay_positions = [manual_reel_builder.DEFAULT_OVERLAY_ANCHOR] * len(media_paths)
     overlay_font_scales = [requested_font_scale] * len(media_paths)
 
     try:
@@ -418,9 +890,14 @@ async def api_upload_reel_generate(
             music_track_id=music_track_id,
             transition_type=transition_type,
             transition_speed=transition_speed,
+            transition_xfade_scale=xfade_scale_opt,
             overlay_positions=overlay_positions,
             overlay_font_scales=overlay_font_scales,
             titles=titles if items_json else None,
+            hook_caption=hook_caption,
+            hook_seconds=hook_sec_f,
+            image_segment_seconds=clip_img,
+            video_segment_seconds=clip_vid,
         )
         out = dict(res)
         out["video_url"] = _to_media_url(out.get("output_path") or "") or None

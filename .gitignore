@@ -6,6 +6,8 @@ __pycache__/
 *.egg-info/
 .pytest_cache/
 output/
+# Cached Google Fonts (reel overlay TTFs) — fetched on first use
+travel_instagram/fonts/*.ttf
 *.mp4
 *.log
 .DS_Store

@@ -32,6 +32,8 @@ OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", PROJECT_ROOT / "output")).resolve()
 MCP_REELS_DIR = OUTPUT_DIR / "mcp_reels"
 CAROUSEL_DIR = OUTPUT_DIR / "carousel"
 REELS_DIR = OUTPUT_DIR / "reels"
+# Saved Reels AD sessions (downloaded media + session.json for reopening in the UI)
+AD_REELS_LIBRARY_DIR = OUTPUT_DIR / "ad_reels_library"
 
 # Media preferences — carousel JPEGs (9:16, same as Reels / IG vertical feed)
 # Dimensions follow REEL_WIDTH × REEL_HEIGHT (defined just below)
@@ -190,3 +192,4 @@ def ensure_output_dirs() -> None:
     CAROUSEL_DIR.mkdir(parents=True, exist_ok=True)
     REELS_DIR.mkdir(parents=True, exist_ok=True)
     MUSIC_LIBRARY_DIR.mkdir(parents=True, exist_ok=True)
+    AD_REELS_LIBRARY_DIR.mkdir(parents=True, exist_ok=True)

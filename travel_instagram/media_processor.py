@@ -894,12 +894,15 @@ def _xfade_concat_reel_segments(
     *,
     context: str,
     transition_style: str | None = None,
+    segment_durations: Sequence[float] | None = None,
 ) -> None:
     """
     Chain short vertical segment MP4s with ``xfade`` transitions (InstaPost-style).
 
-    ``seg_actual`` = real duration of each segment MP4 (frame-quantized). Do **not**
-    ``trim`` past the file length — that triggers decoder errors on some FFmpeg builds.
+    ``seg_actual`` = duration used when ``segment_durations`` is omitted (uniform clips).
+
+    If ``segment_durations`` is set, it must match the number of inputs and holds each
+    clip's real duration (frame-quantized). Do **not** ``trim`` past file length.
 
     If ``transition_style`` is provided, it is used for all transitions. Otherwise, a
     random transition is picked for each boundary.
@@ -911,6 +914,15 @@ def _xfade_concat_reel_segments(
     if n == 1:
         shutil.copy(paths[0], out_mp4)
         return
+
+    if segment_durations is not None:
+        durs = [float(x) for x in segment_durations]
+        if len(durs) != n:
+            raise RuntimeError(
+                f"segment_durations length ({len(durs)}) must match segment count ({n})."
+            )
+    else:
+        durs = [float(seg_actual)] * n
 
     exe = _ensure_ffmpeg()
     # +genpts helps short segment MP4s probe cleanly on Windows.
@@ -930,7 +942,7 @@ def _xfade_concat_reel_segments(
 
     transition_lines: list[str] = []
     current = v_labels[0]
-    current_duration = seg_actual
+    current_duration = durs[0]
     for i in range(1, n):
         nxt = v_labels[i]
         out = f"[rx{i}]"
@@ -945,7 +957,7 @@ def _xfade_concat_reel_segments(
             f"{current}{nxt}xfade=transition={tr}:duration={xfade_dur:.3f}:offset={offset:.3f}{out}"
         )
         current = out
-        current_duration = current_duration + seg_actual - xfade_dur
+        current_duration = current_duration + durs[i] - xfade_dur
 
     filter_complex = ";".join(clip_filters + transition_lines)
     cmd.extend(

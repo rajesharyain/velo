@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    :root { --ig-top: 54px; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; font-family: Inter, system-ui, sans-serif; background: #0b1220; color: #e7ecf5; }
+    .ig-top {
+      position: sticky; top: 0; z-index: 50; min-height: var(--ig-top);
+      padding: 0.5rem 0.75rem 0.6rem; background: rgba(0,0,0,0.92);
+      backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.08);
+      display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem;
+    }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .nav-link {
+      color: rgba(255,255,255,0.55); text-decoration: none; font-size: 0.82rem;
+      padding: 0.35rem 0.65rem; border-radius: 8px;
+    }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+    .card { background: #111a2d; border: 1px solid #26324a; border-radius: 14px; padding: 16px; margin-top: 14px; }
+    .muted { color: #9ca8bf; font-size: 13px; }
+    h2 { margin: 0 0 10px; font-size: 1.15rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { border: 1px solid #2a3650; padding: 10px 12px; text-align: left; }
+    th { background: #0d1525; color: #b8c5e0; }
+    a.row-link { color: #93c5fd; font-weight: 600; text-decoration: none; }
+    a.row-link:hover { text-decoration: underline; }
+    #loadStatus { margin-top: 12px; font-size: 14px; }
+    .err { color: #f87171; }
+  </style>
+</head>
+<body>
+  <header class="ig-top">
+    {% include "_nav.html" %}
+  </header>
+  <div class="wrap">
+    <div class="card">
+      <h2>Reels AD — saved sessions</h2>
+      <p class="muted">Each row is a stored prompt plus media copied under <code>output/ad_reels_library/</code>. Open one to see the same layout as on <a href="/ad-reels">Reels AD</a> using local <code>/media/</code> files.</p>
+      <div id="loadStatus" class="muted">Loading…</div>
+      <table id="sessTable" style="display:none; margin-top:14px;">
+        <thead>
+          <tr><th>Saved</th><th>Prompt</th><th>Open</th></tr>
+        </thead>
+        <tbody id="sessBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <script>
+    (async () => {
+      const loadStatus = document.getElementById("loadStatus");
+      const sessTable = document.getElementById("sessTable");
+      const sessBody = document.getElementById("sessBody");
+      try {
+        const res = await fetch("/api/ad-reels/library");
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        const rows = data.sessions || [];
+        if (!rows.length) {
+          loadStatus.textContent = "No saved sessions yet. On Reels AD, use “Save … to project folder”.";
+          return;
+        }
+        loadStatus.style.display = "none";
+        sessTable.style.display = "table";
+        rows.forEach((s) => {
+          const tr = document.createElement("tr");
+          const td0 = document.createElement("td");
+          td0.textContent = s.saved_at || "—";
+          const td1 = document.createElement("td");
+          td1.textContent = (s.query || "").slice(0, 200) || "(no query)";
+          const td2 = document.createElement("td");
+          const a = document.createElement("a");
+          a.className = "row-link";
+          a.href = "/ad-reels?session=" + encodeURIComponent(s.session_id);
+          a.textContent = "Open";
+          td2.appendChild(a);
+          tr.appendChild(td0);
+          tr.appendChild(td1);
+          tr.appendChild(td2);
+          sessBody.appendChild(tr);
+        });
+      } catch (e) {
+        loadStatus.className = "err";
+        loadStatus.textContent = String(e && e.message ? e.message : e);
+      }
+    })();
+  </script>
+</body>
+</html>

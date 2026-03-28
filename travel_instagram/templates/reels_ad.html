@@ -53,6 +53,11 @@
     textarea { width:100%; min-height:100px; resize:vertical; box-sizing:border-box; }
     input[type=text] { width:100%; max-width:520px; box-sizing:border-box; }
     select { min-width:200px; }
+    input[type=range] { width:100%; max-width:320px; accent-color:#4f8cff; }
+    input[type=number] {
+      background:#0d1525; color:#e7ecf5; border:1px solid #2a3650; border-radius:10px; padding:8px 10px;
+      font-family: inherit; width:88px;
+    }
     button { cursor:pointer; font-weight:600; margin-top:10px; }
     button:disabled { opacity:.55; cursor:not-allowed; }
     .row { display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end; margin-top:10px; }
@@ -63,15 +68,60 @@
     .place-block h4 { margin:0 0 10px; font-size:1.05rem; color:#fff; }
     .media-grid {
       display:grid;
-      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-      gap:12px;
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+      gap:14px;
+    }
+    .media-tile-wrap {
+      border:1px solid #2a3650;
+      border-radius:12px;
+      overflow:hidden;
+      background:#0f182a;
+      display:flex;
+      flex-direction:column;
     }
     .media-tile {
-      border-radius:10px; overflow:hidden; border:1px solid #2a3650;
-      background:#0b1220; aspect-ratio:16/10;
+      border-radius:0;
+      overflow:hidden;
+      border:none;
+      border-bottom:1px solid #2a3650;
+      background:#0b1220;
+      aspect-ratio:16/10;
     }
-    .media-tile img, .media-tile video { width:100%; height:100%; object-fit:cover; display:block; vertical-align:top; }
-    .media-meta { font-size:11px; color:#9ca8bf; padding:6px 8px; border-top:1px solid #2a3650; }
+    .media-tile img, .media-tile video {
+      width:100%;
+      height:100%;
+      object-fit:cover;
+      object-position:center;
+      display:block;
+      vertical-align:top;
+    }
+    .media-meta { font-size:11px; color:#9ca8bf; padding:6px 8px; }
+    .media-actions {
+      display:flex;
+      flex-wrap:wrap;
+      align-items:center;
+      gap:10px 14px;
+      padding:10px 10px 12px;
+      font-size:12px;
+    }
+    .media-actions label { display:inline-flex; align-items:center; gap:8px; font-weight:600; margin:0; cursor:pointer; }
+    .media-actions button {
+      margin-top:0;
+      padding:6px 12px;
+      font-size:12px;
+      background:#1e3a5f;
+      border:1px solid #2a5080;
+    }
+    .media-actions button:hover { background:#254a7a; }
+    .ad-reel-toolbar {
+      margin-top:18px;
+      padding-top:16px;
+      border-top:1px solid #2a3650;
+    }
+    .ad-reel-toolbar .row { align-items:center; }
+    .ad-reel-toolbar button.primary { background:#2563eb; border-color:#3b82f6; }
+    .ad-reel-toolbar select { min-width:220px; }
+    #adBuildLink { display:inline-block; margin-top:10px; color:#93c5fd; font-weight:600; }
     table.plan { width:100%; border-collapse:collapse; font-size:13px; margin-top:8px; }
     table.plan th, table.plan td { border:1px solid #2a3650; padding:8px 10px; text-align:left; vertical-align:top; }
     table.plan th { background:#0d1525; color:#b8c5e0; }
@@ -95,7 +145,7 @@
   <div class="wrap">
     <div class="card">
       <h2 style="margin:0 0 6px;">Reels AD — structured travel + Pexels</h2>
-      <p class="muted">Groq returns 5 places with queries; the server runs parallel Pexels image/video searches. Below you will see <strong>media first</strong>, then <strong>Groq structure</strong> and the <strong>exact strings sent to Pexels</strong>, then raw JSON.</p>
+      <p class="muted">Groq returns 5 places with queries; the server runs parallel Pexels image/video searches. Below you will see <strong>media first</strong>, then <strong>Groq structure</strong> and the <strong>exact strings sent to Pexels</strong>, then raw JSON. <a href="/ad-reels/library" style="color:#93c5fd;">Saved sessions</a> lists stored prompts and local files under <code>output/ad_reels_library/</code>.</p>
 
       <label for="qInput">Prompt</label>
       <textarea id="qInput" placeholder="e.g. Top places to visit in Portugal" required></textarea>
@@ -126,8 +176,72 @@
     <div id="resultsEl" style="display:none;">
       <div class="card">
         <h2>1. Images &amp; videos (Pexels)</h2>
-        <p class="muted">Grouped by place. URLs are remote (Pexels CDN).</p>
+        <p class="muted">Grouped by place. Check <strong>Use in reel</strong> for each image or video, then <strong>Build reel</strong>. The server uses files from <code>output/ad_reels_library/</code> when the same clip was saved there, and only downloads from Pexels if no local copy exists. <strong>Download</strong> saves one file in the browser. <strong>Save to project folder</strong> copies into the library and records your prompt — reopen from <a href="/ad-reels/library" style="color:#93c5fd;">Saved sessions</a>. <strong>ZIP</strong> downloads a single archive (remote or <code>/media/</code> URLs).</p>
         <div id="mediaMount"></div>
+        <div id="adReelToolbar" class="ad-reel-toolbar" style="display:none;">
+          <div class="row">
+            <button type="button" id="adSelAll" class="secondary">Select all</button>
+            <button type="button" id="adSelNone" class="secondary">Clear selection</button>
+            <button type="button" id="adDlSelected" class="secondary">Download selected (browser)</button>
+          </div>
+          <div class="row" style="margin-top:10px;">
+            <button type="button" id="adSaveLibSelected" class="secondary" title="Copy checked clips + JSON into output/ad_reels_library">Save selected to project folder</button>
+            <button type="button" id="adSaveLibAll" class="secondary" title="Copy every clip shown + JSON">Save ALL to project folder</button>
+            <button type="button" id="adZipSelected" class="secondary">ZIP selected</button>
+            <button type="button" id="adZipAll" class="secondary">ZIP all</button>
+          </div>
+          <div id="adLibStatus" class="status muted" style="margin-top:10px;"></div>
+          <div class="row" style="margin-top:12px; align-items:flex-end;">
+            <div>
+              <label for="adMusic">Background music</label>
+              <select id="adMusic" aria-label="Background music">
+                <option value="__auto__">Automatic</option>
+                <option value="__none__">No music</option>
+              </select>
+            </div>
+            <div>
+              <label for="adTransitionType">Between clips</label>
+              <select id="adTransitionType" aria-label="Transition style">
+                <option value="slideleft" selected>Slide left</option>
+                <option value="fade">Fade</option>
+                <option value="slideright">Slide right</option>
+                <option value="slideup">Slide up</option>
+                <option value="slidedown">Slide down</option>
+                <option value="wipeleft">Wipe left</option>
+                <option value="wiperight">Wipe right</option>
+                <option value="auto">Random</option>
+                <option value="none">Hard cuts</option>
+              </select>
+            </div>
+            <button type="button" id="adBuildReel" class="primary">Build reel from selection</button>
+          </div>
+          <div class="row" style="margin-top:12px; align-items:center;">
+            <label for="adXfadeRange" style="margin:0; min-width:120px;">Transition length</label>
+            <input type="range" id="adXfadeRange" min="45" max="165" value="100" step="1" title="Shorter = snappier; longer = slower blend" />
+            <span id="adXfadePct" class="muted" style="min-width:48px; font-size:12px;">100%</span>
+          </div>
+          <div class="row" style="margin-top:12px; align-items:flex-end;">
+            <div>
+              <label for="adClipSecondsImage">Seconds per image</label>
+              <input type="number" id="adClipSecondsImage" min="0.5" max="90" step="0.5" value="3" style="width:88px;" />
+            </div>
+            <div>
+              <label for="adClipSecondsVideo">Seconds per video</label>
+              <input type="number" id="adClipSecondsVideo" min="0.5" max="90" step="0.5" value="5" style="width:88px;" />
+            </div>
+          </div>
+          <p class="muted" style="margin:6px 0 0; font-size:12px;">Each still uses the image duration; each clip uses the video duration (defaults 3s / 5s).</p>
+          <div style="margin-top:12px;">
+            <label for="adHookCaption">Opening hook — first clip only (optional)</label>
+            <textarea id="adHookCaption" rows="2" placeholder="Shown on the first clip for the first few seconds; then the place title/caption for that clip."></textarea>
+            <div class="row" style="margin-top:8px; align-items:center;">
+              <label for="adHookSeconds" style="margin:0;">Hook seconds</label>
+              <input type="number" id="adHookSeconds" min="0.5" max="12" step="0.5" value="3" />
+            </div>
+          </div>
+          <div id="adBuildStatus" class="status muted"></div>
+          <a id="adBuildLink" href="#" target="_blank" rel="noopener" style="display:none;">Open generated MP4</a>
+        </div>
       </div>
 
       <div class="card">
@@ -161,6 +275,176 @@
     const structureMount = document.getElementById("structureMount");
     const planMount = document.getElementById("planMount");
     const jsonPre = document.getElementById("jsonPre");
+    const adReelToolbar = document.getElementById("adReelToolbar");
+    const adSelAll = document.getElementById("adSelAll");
+    const adSelNone = document.getElementById("adSelNone");
+    const adDlSelected = document.getElementById("adDlSelected");
+    const adMusic = document.getElementById("adMusic");
+    const adTransitionType = document.getElementById("adTransitionType");
+    const adXfadeRange = document.getElementById("adXfadeRange");
+    const adXfadePct = document.getElementById("adXfadePct");
+    const adHookCaption = document.getElementById("adHookCaption");
+    const adHookSeconds = document.getElementById("adHookSeconds");
+    const adClipSecondsImage = document.getElementById("adClipSecondsImage");
+    const adClipSecondsVideo = document.getElementById("adClipSecondsVideo");
+    const adBuildReel = document.getElementById("adBuildReel");
+    const adBuildStatus = document.getElementById("adBuildStatus");
+    const adBuildLink = document.getElementById("adBuildLink");
+    const adSaveLibSelected = document.getElementById("adSaveLibSelected");
+    const adSaveLibAll = document.getElementById("adSaveLibAll");
+    const adZipSelected = document.getElementById("adZipSelected");
+    const adZipAll = document.getElementById("adZipAll");
+    const adLibStatus = document.getElementById("adLibStatus");
+
+    /** Last travel-media API response (or loaded session doc) for save / ZIP. */
+    let __adReelsSnapshot = null;
+
+    function slugName(s) {
+      return String(s || "clip")
+        .replace(/\s+/g, "_")
+        .replace(/[^\w\-]+/g, "")
+        .slice(0, 48) || "clip";
+    }
+
+    function syncAdXfadeLabel() {
+      if (!adXfadeRange || !adXfadePct) return;
+      const p = Math.max(45, Math.min(165, parseInt(adXfadeRange.value, 10) || 100));
+      adXfadeRange.value = String(p);
+      adXfadePct.textContent = p + "%";
+    }
+    if (adXfadeRange) adXfadeRange.addEventListener("input", syncAdXfadeLabel);
+    syncAdXfadeLabel();
+
+    async function loadAdMusicTracks() {
+      try {
+        const res = await fetch("/api/music-tracks");
+        const data = res.ok ? await res.json() : { tracks: [] };
+        const tracks = data.tracks || [];
+        adMusic.innerHTML = "";
+        const auto = document.createElement("option");
+        auto.value = "__auto__";
+        auto.textContent = "Automatic (.env or first file in music/)";
+        adMusic.appendChild(auto);
+        const none = document.createElement("option");
+        none.value = "__none__";
+        none.textContent = "No music";
+        adMusic.appendChild(none);
+        tracks.forEach((t) => {
+          const opt = document.createElement("option");
+          opt.value = t.id;
+          opt.textContent = t.label || t.id;
+          adMusic.appendChild(opt);
+        });
+      } catch (_) { /* ignore */ }
+    }
+    loadAdMusicTracks();
+
+    function isZippableUrl(u) {
+      return /^https?:\/\//i.test(u) || u.startsWith("/media/");
+    }
+
+    function buildLibrarySaveBody(mode) {
+      if (!__adReelsSnapshot || !__adReelsSnapshot.places) {
+        throw new Error("Fetch media first (nothing to save).");
+      }
+      const selected_urls = [];
+      if (mode === "selected") {
+        document.querySelectorAll("#mediaMount .media-tile-wrap").forEach((wrap) => {
+          const cb = wrap.querySelector(".adPick");
+          if (!cb || !cb.checked) return;
+          const u = (wrap.dataset.url || "").trim();
+          if (u) selected_urls.push(u);
+        });
+      }
+      return {
+        mode: mode === "all" ? "all" : "selected",
+        selected_urls,
+        query: qInput.value.trim(),
+        tags: parseTags(tagsInput.value),
+        orientation: (orientSel.value || "").trim() || null,
+        places: __adReelsSnapshot.places,
+        groq_places: __adReelsSnapshot.groq_places || [],
+        search_plan: __adReelsSnapshot.search_plan || [],
+        user_query: __adReelsSnapshot.user_query || "",
+        groq_model: __adReelsSnapshot.groq_model,
+        pexels_calls_used: __adReelsSnapshot.pexels_calls_used,
+        cache_hits: __adReelsSnapshot.cache_hits,
+      };
+    }
+
+    async function runLibrarySave(mode) {
+      adLibStatus.className = "status muted";
+      adLibStatus.textContent = "Saving…";
+      const body = buildLibrarySaveBody(mode);
+      const res = await fetch("/api/ad-reels/library/save", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.detail || res.statusText);
+      const openUrl = data.open_url || "";
+      adLibStatus.className = "status ok";
+      adLibStatus.innerHTML =
+        "Saved. Session <code>" +
+        (data.session_id || "") +
+        "</code>. " +
+        (openUrl
+          ? '<a href="' + openUrl + '" style="color:#93c5fd;">Open this view</a> · '
+          : "") +
+        '<a href="/ad-reels/library" style="color:#93c5fd;">Library</a>';
+    }
+
+    function collectZipItems(mode) {
+      const items = [];
+      document.querySelectorAll("#mediaMount .media-tile-wrap").forEach((wrap) => {
+        const cb = wrap.querySelector(".adPick");
+        if (mode === "selected" && (!cb || !cb.checked)) return;
+        const u = (wrap.dataset.url || "").trim();
+        if (!isZippableUrl(u)) return;
+        items.push({ url: u, filename: wrap.dataset.filename || "file.bin" });
+      });
+      return items;
+    }
+
+    async function runZip(mode) {
+      const items = collectZipItems(mode);
+      if (!items.length) throw new Error("No URLs to zip (check selection or fetch media).");
+      const res = await fetch("/api/ad-reels/library/zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || res.statusText);
+      }
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      let name = "ad-reels.zip";
+      const m = /filename="?([^";]+)"?/i.exec(cd);
+      if (m) name = m[1].trim();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    async function downloadRemote(url, filename) {
+      try {
+        const res = await fetch(url, { mode: "cors" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+        const blob = await res.blob();
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = filename || "download.bin";
+        a.click();
+        URL.revokeObjectURL(a.href);
+      } catch {
+        window.open(url, "_blank", "noopener,noreferrer");
+      }
+    }
 
     function parseTags(raw) {
       return String(raw || "")
@@ -179,6 +463,9 @@
 
     function renderMedia(data) {
       mediaMount.innerHTML = "";
+      adBuildLink.style.display = "none";
+      adBuildLink.href = "#";
+      adBuildStatus.textContent = "";
       const places = data.places || [];
       places.forEach((place, pi) => {
         const block = el("div", "place-block");
@@ -186,10 +473,18 @@
         block.appendChild(h);
         const grid = el("div", "media-grid");
         const media = place.media || [];
+        const pslug = slugName(place.name);
         if (!media.length) {
           block.appendChild(el("p", "muted", "No media returned for this place."));
         } else {
-          media.forEach((m) => {
+          media.forEach((m, mi) => {
+            const wrap = el("div", "media-tile-wrap");
+            wrap.dataset.url = m.url || "";
+            wrap.dataset.placeName = place.name || "";
+            wrap.dataset.mediaType = m.type === "video" ? "video" : "image";
+            const ext = m.type === "video" ? "mp4" : "jpg";
+            wrap.dataset.filename = `${pslug}_${mi + 1}_${m.type}.${ext}`;
+
             const tile = el("div", "media-tile");
             if (m.type === "video") {
               const v = document.createElement("video");
@@ -214,12 +509,32 @@
               meta.appendChild(document.createTextNode(` · ${m.width}×${m.height}`));
             }
             tile.appendChild(meta);
-            grid.appendChild(tile);
+            wrap.appendChild(tile);
+
+            const actions = el("div", "media-actions");
+            const lab = document.createElement("label");
+            const cb = document.createElement("input");
+            cb.type = "checkbox";
+            cb.className = "adPick";
+            cb.checked = true;
+            cb.title = "Include this clip when building a reel";
+            lab.appendChild(cb);
+            lab.appendChild(document.createTextNode(" Use in reel"));
+            actions.appendChild(lab);
+            const dlBtn = el("button", null, "Download");
+            dlBtn.type = "button";
+            dlBtn.title = "Save file (or open in new tab if blocked)";
+            dlBtn.addEventListener("click", () => downloadRemote(m.url, wrap.dataset.filename));
+            actions.appendChild(dlBtn);
+            wrap.appendChild(actions);
+
+            grid.appendChild(wrap);
           });
         }
         block.appendChild(grid);
         mediaMount.appendChild(block);
       });
+      adReelToolbar.style.display = places.length ? "block" : "none";
     }
 
     function renderStructure(data) {
@@ -313,6 +628,134 @@
       planMount.appendChild(table);
     }
 
+    adSelAll.addEventListener("click", () => {
+      document.querySelectorAll("#mediaMount .adPick").forEach((c) => {
+        c.checked = true;
+      });
+    });
+    adSelNone.addEventListener("click", () => {
+      document.querySelectorAll("#mediaMount .adPick").forEach((c) => {
+        c.checked = false;
+      });
+    });
+    adDlSelected.addEventListener("click", () => {
+      document.querySelectorAll("#mediaMount .media-tile-wrap").forEach((wrap) => {
+        const cb = wrap.querySelector(".adPick");
+        if (!cb || !cb.checked) return;
+        const u = wrap.dataset.url;
+        if (!u) return;
+        downloadRemote(u, wrap.dataset.filename || "download.bin");
+      });
+    });
+
+    adSaveLibSelected.addEventListener("click", async () => {
+      try {
+        await runLibrarySave("selected");
+      } catch (e) {
+        adLibStatus.className = "status err";
+        adLibStatus.textContent = String(e && e.message ? e.message : e);
+      }
+    });
+    adSaveLibAll.addEventListener("click", async () => {
+      try {
+        await runLibrarySave("all");
+      } catch (e) {
+        adLibStatus.className = "status err";
+        adLibStatus.textContent = String(e && e.message ? e.message : e);
+      }
+    });
+    adZipSelected.addEventListener("click", async () => {
+      adLibStatus.className = "status muted";
+      adLibStatus.textContent = "Building ZIP…";
+      try {
+        await runZip("selected");
+        adLibStatus.className = "status ok";
+        adLibStatus.textContent = "ZIP download started.";
+      } catch (e) {
+        adLibStatus.className = "status err";
+        adLibStatus.textContent = String(e && e.message ? e.message : e);
+      }
+    });
+    adZipAll.addEventListener("click", async () => {
+      adLibStatus.className = "status muted";
+      adLibStatus.textContent = "Building ZIP…";
+      try {
+        await runZip("all");
+        adLibStatus.className = "status ok";
+        adLibStatus.textContent = "ZIP download started.";
+      } catch (e) {
+        adLibStatus.className = "status err";
+        adLibStatus.textContent = String(e && e.message ? e.message : e);
+      }
+    });
+
+    adBuildReel.addEventListener("click", async () => {
+      const items = [];
+      document.querySelectorAll("#mediaMount .media-tile-wrap").forEach((wrap) => {
+        const cb = wrap.querySelector(".adPick");
+        if (!cb || !cb.checked) return;
+        const url = (wrap.dataset.url || "").trim();
+        const media_type = wrap.dataset.mediaType === "video" ? "video" : "image";
+        if (!url) return;
+        const placeTitle = (wrap.dataset.placeName || "").trim();
+        items.push({
+          source: "url",
+          url,
+          media_type,
+          caption: "",
+          title: placeTitle,
+        });
+      });
+      if (!items.length) {
+        adBuildStatus.className = "status err";
+        adBuildStatus.textContent = "Select at least one image or video (checkbox).";
+        return;
+      }
+      adBuildReel.disabled = true;
+      adBuildStatus.className = "status muted";
+      adBuildStatus.textContent = "Building reel (local library first, then download if needed)…";
+      adBuildLink.style.display = "none";
+
+      const fd = new FormData();
+      fd.append("items_json", JSON.stringify(items));
+      fd.append("captions_json", "[]");
+      fd.append("transition_type", (adTransitionType && adTransitionType.value) ? adTransitionType.value : "slideleft");
+      fd.append("transition_speed", "default");
+      const xp = Math.max(45, Math.min(165, parseInt(adXfadeRange && adXfadeRange.value, 10) || 100));
+      fd.append("transition_xfade_scale", (xp / 100).toFixed(3));
+      fd.append("hook_caption", (adHookCaption && adHookCaption.value) ? adHookCaption.value : "");
+      fd.append("hook_seconds", (adHookSeconds && adHookSeconds.value) ? String(adHookSeconds.value) : "3");
+      fd.append("clip_seconds_image", (adClipSecondsImage && adClipSecondsImage.value) ? String(adClipSecondsImage.value) : "3");
+      fd.append("clip_seconds_video", (adClipSecondsVideo && adClipSecondsVideo.value) ? String(adClipSecondsVideo.value) : "5");
+      fd.append("overlay_font_scale", "1.0");
+      let mid = adMusic.value;
+      if (mid === "__auto__") mid = "";
+      fd.append("music_track_id", mid);
+
+      try {
+        const res = await fetch("/api/upload-reel/generate", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const d = data.detail;
+          const msg = typeof d === "string" ? d : Array.isArray(d) ? JSON.stringify(d) : data.detail || res.statusText;
+          throw new Error(msg || `HTTP ${res.status}`);
+        }
+        adBuildStatus.className = "status ok";
+        adBuildStatus.textContent = "Reel ready.";
+        if (data.video_url) {
+          adBuildLink.href = data.video_url;
+          adBuildLink.style.display = "inline-block";
+        } else {
+          adBuildStatus.textContent += " (no video_url in response — check server logs.)";
+        }
+      } catch (e) {
+        adBuildStatus.className = "status err";
+        adBuildStatus.textContent = String(e && e.message ? e.message : e);
+      } finally {
+        adBuildReel.disabled = false;
+      }
+    });
+
     runBtn.addEventListener("click", async () => {
       const query = (qInput.value || "").trim();
       if (!query) {
@@ -342,6 +785,7 @@
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
 
+        __adReelsSnapshot = data;
         renderMedia(data);
         renderStructure(data);
         renderPlan(data);
@@ -356,6 +800,42 @@
         runBtn.disabled = false;
       }
     });
+
+    (async function bootSavedSession() {
+      const sid = new URLSearchParams(location.search).get("session");
+      if (!sid) return;
+      statusEl.className = "status muted";
+      statusEl.textContent = "Loading saved session…";
+      try {
+        const res = await fetch("/api/ad-reels/library/" + encodeURIComponent(sid));
+        const doc = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(doc.detail || res.statusText);
+        __adReelsSnapshot = doc;
+        const req = doc.request || {};
+        qInput.value = req.query || doc.user_query || "";
+        tagsInput.value = (req.tags || []).join(", ");
+        orientSel.value = req.orientation || "";
+        const view = {
+          places: doc.places || [],
+          groq_places: doc.groq_places || [],
+          search_plan: doc.search_plan || [],
+          pexels_calls_used: doc.pexels_calls_used,
+          cache_hits: doc.cache_hits,
+          groq_model: doc.groq_model,
+          user_query: doc.user_query,
+        };
+        renderMedia(view);
+        renderStructure(view);
+        renderPlan(view);
+        jsonPre.textContent = JSON.stringify(doc, null, 2);
+        resultsEl.style.display = "block";
+        statusEl.className = "status ok";
+        statusEl.textContent = "Loaded saved session " + sid;
+      } catch (e) {
+        statusEl.className = "status err";
+        statusEl.textContent = String(e && e.message ? e.message : e);
+      }
+    })();
   </script>
 </body>
 </html>

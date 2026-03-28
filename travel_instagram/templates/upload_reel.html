@@ -152,6 +152,11 @@
       margin-top:10px;
     }
     .video-frame video { width:100%; height:100%; object-fit:cover; display:block; }
+    input[type=number] {
+      background:#0d1525; color:#e7ecf5; border:1px solid #2a3650; border-radius:10px; padding:8px 10px;
+      font-family: inherit;
+    }
+    input[type=range] { accent-color:#4f8cff; }
   </style>
 </head>
 <body>
@@ -171,13 +176,24 @@
         </div>
         <div id="autofillStatus" class="status muted"></div>
       </div>
+      <div class="row" style="margin-top:10px; align-items:flex-end;">
+        <div>
+          <label for="clipSecondsImage" class="muted" style="display:block; font-weight:700; margin-bottom:4px;">Seconds per image</label>
+          <input type="number" id="clipSecondsImage" min="0.5" max="90" step="0.5" value="3" style="width:96px;" title="On-screen time for each still (all images)" />
+        </div>
+        <div>
+          <label for="clipSecondsVideo" class="muted" style="display:block; font-weight:700; margin-bottom:4px;">Seconds per video</label>
+          <input type="number" id="clipSecondsVideo" min="0.5" max="90" step="0.5" value="5" style="width:96px;" title="On-screen time for each video clip (all videos)" />
+        </div>
+      </div>
+      <div class="muted" style="margin-top:4px; font-size:12px;">Defaults: 3s per image, 5s per video. Applies to every item of that type in the reel (plus transition overlap).</div>
       <div class="row" style="margin-top:12px;">
         <input id="mediaFiles" type="file" accept=".jpg,.jpeg,.png,.webp,.mp4,.mov,.m4v,.webm" multiple />
         <select id="musicTrack"></select>
         <select id="transitionType" title="Transition type">
-          <option value="auto" selected>Transition: Auto (random)</option>
+          <option value="auto">Transition: Auto (random)</option>
           <option value="fade">Transition: Fade</option>
-          <option value="slideleft">Transition: Slide Left</option>
+          <option value="slideleft" selected>Transition: Slide Left</option>
           <option value="slideright">Transition: Slide Right</option>
           <option value="slideup">Transition: Slide Up</option>
           <option value="slidedown">Transition: Slide Down</option>
@@ -185,7 +201,7 @@
           <option value="wiperight">Transition: Wipe Right</option>
           <option value="none">Transition: None (hard cuts)</option>
         </select>
-        <select id="transitionSpeed" title="Transition speed">
+        <select id="transitionSpeed" title="Transition speed (fallback if scale omitted)" style="display:none;" aria-hidden="true">
           <option value="auto">Speed: Auto</option>
           <option value="slow">Speed: Slow</option>
           <option value="slower">Speed: Slower</option>
@@ -200,6 +216,20 @@
           <option value="1.6">Overlay Font: XXL</option>
         </select>
         <button id="generateBtn">Generate Reel</button>
+      </div>
+      <div class="row" style="margin-top:10px; align-items:center; max-width:640px;">
+        <label for="transitionXfadeRange" class="muted" style="min-width:140px; font-weight:700;">Transition length</label>
+        <input type="range" id="transitionXfadeRange" min="45" max="165" value="100" step="1" style="flex:1; min-width:120px;" title="Shorter = snappier cut between clips; longer = slower blend" />
+        <span id="transitionXfadeLabel" class="muted" style="min-width:52px; font-size:12px;">100%</span>
+      </div>
+      <div class="muted" style="margin-top:4px; font-size:12px; max-width:640px;">Applies to crossfades between images/videos (slide left, fade, etc.).</div>
+      <div style="margin-top:12px; max-width:640px;">
+        <label for="hookCaption" class="muted" style="display:block; font-weight:700; margin-bottom:6px;">Opening hook (first seconds, first clip only)</label>
+        <textarea id="hookCaption" placeholder="Optional — shown on the first clip only for the first few seconds, then your per-item caption for that clip." rows="2" style="min-height:52px;"></textarea>
+        <div class="row" style="margin-top:8px; align-items:center;">
+          <label for="hookSeconds" class="muted" style="font-weight:700; margin:0;">Hook duration (s)</label>
+          <input type="number" id="hookSeconds" min="0.5" max="12" step="0.5" value="3" style="width:88px;" />
+        </div>
       </div>
       <div id="speedPreview" class="speed-preview" aria-label="Transition speed preview">
         <div class="speed-chip active" data-speed="default">
@@ -292,6 +322,12 @@
     const musicSel = document.getElementById("musicTrack");
     const transitionTypeSel = document.getElementById("transitionType");
     const transitionSpeedSel = document.getElementById("transitionSpeed");
+    const transitionXfadeRange = document.getElementById("transitionXfadeRange");
+    const transitionXfadeLabel = document.getElementById("transitionXfadeLabel");
+    const hookCaptionEl = document.getElementById("hookCaption");
+    const hookSecondsEl = document.getElementById("hookSeconds");
+    const clipSecondsImageEl = document.getElementById("clipSecondsImage");
+    const clipSecondsVideoEl = document.getElementById("clipSecondsVideo");
     const overlayFontScaleSel = document.getElementById("overlayFontScale");
     const musicPlayBtn = document.getElementById("musicPlayBtn");
     const musicPreviewAudio = document.getElementById("musicPreviewAudio");
@@ -338,13 +374,19 @@
     }
 
     function updateSpeedPreview() {
-      const raw = (transitionSpeedSel.value || "default").toString();
-      const activeSpeed = raw === "auto" ? "default" : raw;
+      const pct = Math.max(45, Math.min(165, parseInt(transitionXfadeRange.value, 10) || 100));
+      transitionXfadeRange.value = String(pct);
+      if (transitionXfadeLabel) transitionXfadeLabel.textContent = pct + "%";
+      let activeSpeed = "default";
+      if (pct <= 82) activeSpeed = "fast";
+      else if (pct >= 130) activeSpeed = "slower";
+      else if (pct >= 112) activeSpeed = "slow";
       const chips = Array.from(document.querySelectorAll("#speedPreview .speed-chip"));
       chips.forEach(ch => {
         const ds = ch.dataset.speed;
         ch.classList.toggle("active", ds === activeSpeed);
       });
+      transitionSpeedSel.value = activeSpeed;
     }
 
     function updateMusicPreview() {
@@ -562,15 +604,23 @@
         uploads.forEach(f => fd.append("files", f));
         fd.append("items_json", JSON.stringify(itemsJson));
         fd.append("music_track_id", musicSel.value || "__auto__");
-        fd.append("transition_type", transitionTypeSel.value || "auto");
-        fd.append("transition_speed", transitionSpeedSel.value || "auto");
+        fd.append("transition_type", transitionTypeSel.value || "slideleft");
+        fd.append("transition_speed", transitionSpeedSel.value || "default");
+        const xfadePct = Math.max(45, Math.min(165, parseInt(transitionXfadeRange.value, 10) || 100));
+        fd.append("transition_xfade_scale", (xfadePct / 100).toFixed(3));
+        fd.append("hook_caption", (hookCaptionEl && hookCaptionEl.value) ? hookCaptionEl.value : "");
+        fd.append("hook_seconds", (hookSecondsEl && hookSecondsEl.value) ? String(hookSecondsEl.value) : "3");
+        fd.append("clip_seconds_image", (clipSecondsImageEl && clipSecondsImageEl.value) ? String(clipSecondsImageEl.value) : "3");
+        fd.append("clip_seconds_video", (clipSecondsVideoEl && clipSecondsVideoEl.value) ? String(clipSecondsVideoEl.value) : "5");
         fd.append("overlay_font_scale", overlayFontScaleSel.value || "1.0");
         const res = await fetch("/api/upload-reel/generate", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
 
         outVideo.src = data.video_url || "";
-        meta.textContent = `Run: ${data.run_id || "-"} | Assets: ${data.media_count || 0}`;
+        const di = data.image_segment_seconds != null ? data.image_segment_seconds : "—";
+        const dv = data.video_segment_seconds != null ? data.video_segment_seconds : "—";
+        meta.textContent = `Run: ${data.run_id || "-"} | Assets: ${data.media_count || 0} | Clip: ${di}s image / ${dv}s video`;
         resultEl.style.display = "block";
         statusEl.className = "status ok";
         statusEl.textContent = "Reel generated successfully.";
@@ -604,18 +654,25 @@
       updateSpeedPreview();
     });
 
+    transitionXfadeRange.addEventListener("input", () => {
+      updateSpeedPreview();
+    });
+
     overlayFontScaleSel.addEventListener("change", () => {
       renderItems();
     });
 
+    const speedChipPercents = { default: 100, slow: 122, slower: 138, fast: 78 };
     Array.from(document.querySelectorAll("#speedPreview .speed-chip")).forEach(ch => {
       ch.addEventListener("click", () => {
         const ds = ch.dataset.speed;
         if (!ds) return;
-        transitionSpeedSel.value = ds;
+        const p = speedChipPercents[ds];
+        if (p != null) transitionXfadeRange.value = String(p);
         updateSpeedPreview();
       });
     });
+    updateSpeedPreview();
 
     autoFillBtn.addEventListener("click", async () => {
       const theme = (themeInput.value || "").trim();

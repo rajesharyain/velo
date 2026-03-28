@@ -1197,6 +1197,7 @@ def generate_travel_reel_from_prompt(
         out_duration,
         tmp_out,
         context="mcp travel reel xfade concat",
+        transition_style="slideleft",
     )
 
     # Optional music (match the same semantics as `config.resolve_reel_music` used elsewhere).
