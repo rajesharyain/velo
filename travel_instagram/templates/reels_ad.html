@@ -231,6 +231,15 @@
             </div>
           </div>
           <p class="muted" style="margin:6px 0 0; font-size:12px;">Each still uses the image duration; each clip uses the video duration (defaults 3s / 5s).</p>
+          <div class="row" style="margin-top:12px; align-items:center; flex-wrap:wrap; gap:10px 16px;">
+            <span class="muted" style="font-weight:600;">Caption position</span>
+            <label for="adOverlayAnchorX" style="margin:0; font-size:12px;">H</label>
+            <input type="range" id="adOverlayAnchorX" min="5" max="95" value="50" step="1" style="width:120px;" />
+            <span id="adOverlayAnchorXVal" class="muted" style="font-size:11px; min-width:36px;">50%</span>
+            <label for="adOverlayAnchorY" style="margin:0; font-size:12px;">V</label>
+            <input type="range" id="adOverlayAnchorY" min="5" max="88" value="10" step="1" style="width:120px;" />
+            <span id="adOverlayAnchorYVal" class="muted" style="font-size:11px; min-width:36px;">10%</span>
+          </div>
           <div style="margin-top:12px;">
             <label for="adHookCaption">Opening hook — first clip only (optional)</label>
             <textarea id="adHookCaption" rows="2" placeholder="Shown on the first clip for the first few seconds; then the place title/caption for that clip."></textarea>
@@ -287,6 +296,10 @@
     const adHookSeconds = document.getElementById("adHookSeconds");
     const adClipSecondsImage = document.getElementById("adClipSecondsImage");
     const adClipSecondsVideo = document.getElementById("adClipSecondsVideo");
+    const adOverlayAnchorX = document.getElementById("adOverlayAnchorX");
+    const adOverlayAnchorY = document.getElementById("adOverlayAnchorY");
+    const adOverlayAnchorXVal = document.getElementById("adOverlayAnchorXVal");
+    const adOverlayAnchorYVal = document.getElementById("adOverlayAnchorYVal");
     const adBuildReel = document.getElementById("adBuildReel");
     const adBuildStatus = document.getElementById("adBuildStatus");
     const adBuildLink = document.getElementById("adBuildLink");
@@ -314,6 +327,14 @@
     }
     if (adXfadeRange) adXfadeRange.addEventListener("input", syncAdXfadeLabel);
     syncAdXfadeLabel();
+
+    function syncAdOverlayAnchorLabels() {
+      if (adOverlayAnchorXVal && adOverlayAnchorX) adOverlayAnchorXVal.textContent = adOverlayAnchorX.value + "%";
+      if (adOverlayAnchorYVal && adOverlayAnchorY) adOverlayAnchorYVal.textContent = adOverlayAnchorY.value + "%";
+    }
+    if (adOverlayAnchorX) adOverlayAnchorX.addEventListener("input", syncAdOverlayAnchorLabels);
+    if (adOverlayAnchorY) adOverlayAnchorY.addEventListener("input", syncAdOverlayAnchorLabels);
+    syncAdOverlayAnchorLabels();
 
     async function loadAdMusicTracks() {
       try {
@@ -727,6 +748,10 @@
       fd.append("hook_seconds", (adHookSeconds && adHookSeconds.value) ? String(adHookSeconds.value) : "3");
       fd.append("clip_seconds_image", (adClipSecondsImage && adClipSecondsImage.value) ? String(adClipSecondsImage.value) : "3");
       fd.append("clip_seconds_video", (adClipSecondsVideo && adClipSecondsVideo.value) ? String(adClipSecondsVideo.value) : "5");
+      const adox = adOverlayAnchorX ? Math.max(5, Math.min(95, parseInt(adOverlayAnchorX.value, 10) || 50)) / 100 : 0.5;
+      const adoy = adOverlayAnchorY ? Math.max(5, Math.min(88, parseInt(adOverlayAnchorY.value, 10) || 10)) / 100 : 0.1;
+      fd.append("overlay_anchor_x", adox.toFixed(3));
+      fd.append("overlay_anchor_y", adoy.toFixed(3));
       fd.append("overlay_font_scale", "1.0");
       let mid = adMusic.value;
       if (mid === "__auto__") mid = "";

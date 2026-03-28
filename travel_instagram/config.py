@@ -71,7 +71,7 @@ _REEL_H = max(640, int(os.getenv("REEL_HEIGHT", "1920")))
 REEL_SIZE = (_REEL_W, _REEL_H)
 CAROUSEL_SIZE = REEL_SIZE
 # Footer URL below the caption when not already in slide text (avoids duplicate on closing slide).
-REEL_BRAND_TEXT: str = (os.getenv("REEL_BRAND_TEXT", "budgetwing.com") or "").strip()
+REEL_BRAND_TEXT: str = (os.getenv("REEL_BRAND_TEXT", "www.budgetwing.com") or "").strip()
 DESTINATION_COUNT_MIN = 3
 DESTINATION_COUNT_MAX = 5
 # "Top N places" / ranked lists from Groq (capped for API size and Pexels cost)

@@ -22,8 +22,8 @@ logger = logging.getLogger(__name__)
 # Restore the previous pill: set to (8, 12, 22, 208) — dark blue-black at ~81% alpha.
 CAPTION_OVERLAY_PANEL_RGBA: tuple[int, int, int, int] | None = None
 
-# Default text anchor for manual reels (horizontal center, upper-middle band).
-DEFAULT_OVERLAY_ANCHOR: tuple[float, float] = (0.5, 0.34)
+# Default text anchor for manual reels (horizontal center, upper band).
+DEFAULT_OVERLAY_ANCHOR: tuple[float, float] = (0.5, 0.10)
 
 # Google Fonts (OFL) — lazy-downloaded into ``travel_instagram/fonts/``.
 # Titles: cinematic / bold stack. Body: clean / screen-readable stack.
@@ -187,30 +187,114 @@ def _draw_map_pin(
     pin_cx: int,
     line_center_y: int,
     line_h: int,
+    *,
+    frame_h: int,
 ) -> None:
-    """Vector map pin to the left of the title row; vertically centered on the title line."""
-    r = max(4, min(12, int(line_h * 0.22)))
-    # Ball center slightly above the line's vertical center so the glyph reads aligned with the cap height.
-    cy = int(line_center_y - r * 0.25)
-    cy = max(r + 2, cy)
-    fill = (251, 113, 133, 255)
-    outline = (24, 18, 22, 240)
+    """
+    Lollipop-style location pin: glossy red head, yellow stem (high visibility), rings at base.
+    Vertically aligned with the first title line (head sits slightly above line center).
+    """
+    r = max(7, min(17, int(line_h * 0.34)))
+    brown = (44, 36, 40, 255)
+    red = (232, 58, 62, 255)
+    red_hi = (255, 140, 145, 235)
+    red_lo = (168, 38, 48, 230)
+    stem_yellow = (255, 234, 60, 255)
+    stem_w = max(4, min(8, r // 2))
+
+    # Head center on the title line midline (rings extend below).
+    cy = int(line_center_y)
+    cy = max(r + 6, min(cy, frame_h - int(r * 3.5)))
+
+    # Head
     draw.ellipse(
         (pin_cx - r, cy - r, pin_cx + r, cy + r),
-        fill=fill,
-        outline=outline,
-        width=max(1, r // 5),
+        fill=red,
+        outline=brown,
+        width=max(1, r // 7),
     )
-    tail = max(3, int(r * 1.05))
-    draw.polygon(
-        [
-            (pin_cx, cy + r - 1),
-            (pin_cx - r - 1, cy + r + tail),
-            (pin_cx + r + 1, cy + r + tail),
-        ],
-        fill=fill,
-        outline=outline,
+    # Subtle shading lower-right (under highlights)
+    draw.ellipse(
+        (pin_cx + int(r * 0.12), cy + int(r * 0.08), pin_cx + int(r * 0.92), cy + int(r * 0.88)),
+        fill=red_lo,
     )
+    # Soft highlight blob upper-left inside head
+    draw.ellipse(
+        (
+            pin_cx - int(r * 0.92),
+            cy - int(r * 0.95),
+            pin_cx - int(r * 0.12),
+            cy - int(r * 0.25),
+        ),
+        fill=red_hi,
+    )
+    # Small white specular dot on top
+    dot = max(2, r // 6)
+    dx = pin_cx - int(r * 0.35)
+    dy = cy - int(r * 0.42)
+    draw.ellipse((dx - dot // 2, dy - dot // 2, dx + dot // 2, dy + dot // 2), fill=(255, 255, 255, 245))
+
+    y_stem_top = cy + r - 1
+    stem_len = max(7, int(r * 0.58))
+    y_stem_bot = y_stem_top + stem_len
+    # Dark under-stroke so the yellow stick reads on any background
+    draw.line((pin_cx, y_stem_top, pin_cx, y_stem_bot), fill=(0, 0, 0, 200), width=stem_w + 3)
+    draw.line((pin_cx, y_stem_top, pin_cx, y_stem_bot), fill=stem_yellow, width=stem_w)
+
+    # Flattened elliptical "ground" rings with gaps (broken rings)
+    ring_y = y_stem_bot + max(2, stem_w)
+    rx_o = int(r * 1.45)
+    ry_o = max(3, int(r * 0.26))
+    rx_i = int(r * 0.82)
+    ry_i = max(2, int(r * 0.16))
+    lw = max(2, r // 7)
+
+    bbox_o = (pin_cx - rx_o, ring_y - ry_o, pin_cx + rx_o, ring_y + ry_o)
+    bbox_i = (pin_cx - rx_i, ring_y - ry_i, pin_cx + rx_i, ring_y + ry_i)
+
+    for start, end in ((20, 88), (108, 238), (258, 328)):
+        draw.arc(bbox_o, start=start, end=end, fill=brown, width=lw)
+    for start, end in ((35, 102), (122, 218), (242, 310)):
+        draw.arc(bbox_i, start=start, end=end, fill=brown, width=max(1, lw - 1))
+
+
+def _draw_reel_brand_badge(draw: ImageDraw.ImageDraw, w: int, h: int) -> None:
+    """
+    Bottom-centered domain text, no background — bright yellow with dark stroke for visibility
+    (sits above typical in-app reel chrome).
+    """
+    text = (getattr(config, "REEL_BRAND_TEXT", "") or "").strip()
+    if not text:
+        return
+    font_size = max(22, min(40, int(h * 0.024)))
+    font = _try_overlay_font_stack(_BODY_FONT_STACK, font_size)
+    margin_bottom = max(32, int(h * 0.13))
+    sw = max(2, min(5, int(h * 0.0028)))
+    y_anchor = h - margin_bottom
+    try:
+        draw.text(
+            (w // 2, y_anchor),
+            text,
+            font=font,
+            fill=(255, 234, 60, 255),
+            stroke_width=sw,
+            stroke_fill=(0, 0, 0, 245),
+            anchor="mb",
+        )
+    except TypeError:
+        bb = draw.textbbox((0, 0), text, font=font)
+        tw = bb[2] - bb[0]
+        th = bb[3] - bb[1]
+        tx = (w - tw) // 2 - bb[0]
+        ty = y_anchor - th - bb[1]
+        draw.text(
+            (tx, ty),
+            text,
+            font=font,
+            fill=(255, 234, 60, 255),
+            stroke_width=sw,
+            stroke_fill=(0, 0, 0, 245),
+        )
 
 
 def infer_overlay_title_from_caption(caption: str) -> str:
@@ -306,6 +390,7 @@ def _render_caption_overlay(
     pad_y = int(max(20, h * 0.022))
 
     if not title_t and not body_t:
+        _draw_reel_brand_badge(draw, w, h)
         img.save(out_png)
         return out_png
 
@@ -317,6 +402,7 @@ def _render_caption_overlay(
         )
         lines = _wrap_words_to_lines(draw, body_t, font, max_w, 4)
         if not lines:
+            _draw_reel_brand_badge(draw, w, h)
             img.save(out_png)
             return out_png
         heights = [
@@ -357,6 +443,7 @@ def _render_caption_overlay(
                 stroke_fill=(0, 0, 0, 160),
             )
             cy_line += (bb[3] - bb[1]) + line_gap
+        _draw_reel_brand_badge(draw, w, h)
         img.save(out_png)
         return out_png
 
@@ -369,9 +456,13 @@ def _render_caption_overlay(
         _BODY_FONT_STACK,
         int(h * 0.030 * font_scale),
     )
-    pin_slot = int(h * 0.042)
-    pin_gap = int(h * 0.010)
-    col_w = max(120, max_w - pin_slot - pin_gap)
+    # Pin column width from title size; tight gap so the pin sits close to the location name.
+    title_px = int(h * 0.040 * font_scale)
+    r_pin = max(7, min(17, int(title_px * 0.82)))
+    rx_o_pin = int(r_pin * 1.45)
+    pin_col_w = 2 * rx_o_pin + 8
+    pin_gap = 5
+    col_w = max(120, max_w - pin_col_w - pin_gap)
     title_lines = _wrap_words_to_lines(draw, title_t, title_font, col_w, 2)
     body_lines = _wrap_words_to_lines(draw, body_t, body_font, col_w, 5) if body_t else []
 
@@ -397,7 +488,7 @@ def _render_caption_overlay(
         bb = draw.textbbox((0, 0), ln, font=body_font)
         max_body_tw = max(max_body_tw, bb[2] - bb[0])
     text_block_w = max(max_title_tw, max_body_tw)
-    block_w = pin_slot + pin_gap + text_block_w if title_lines else text_block_w
+    block_w = pin_col_w + pin_gap + text_block_w if title_lines else text_block_w
 
     rect_w = min(w - 36, block_w + pad_x * 2)
     rect_h = block_h + pad_y * 2
@@ -417,7 +508,8 @@ def _render_caption_overlay(
 
     cy_line = y0 + pad_y
     inner_left = x0 + pad_x
-    text_x0 = inner_left + pin_slot + pin_gap
+    text_x0 = inner_left + pin_col_w + pin_gap
+    pin_cx_title = inner_left + rx_o_pin + 3
     title_stroke = max(1, int(round(font_scale * 1.05)))
     body_stroke = max(1, int(round(font_scale * 0.85)))
     for ti, ln in enumerate(title_lines):
@@ -425,7 +517,7 @@ def _render_caption_overlay(
         line_h = bb[3] - bb[1]
         if ti == 0:
             line_center_y = cy_line + line_h // 2
-            _draw_map_pin(draw, inner_left + pin_slot // 2, line_center_y, line_h)
+            _draw_map_pin(draw, pin_cx_title, line_center_y, line_h, frame_h=h)
         tx = text_x0
         draw.text(
             (tx, cy_line),
@@ -453,6 +545,7 @@ def _render_caption_overlay(
         )
         cy_line += (bb[3] - bb[1]) + line_gap
 
+    _draw_reel_brand_badge(draw, w, h)
     img.save(out_png)
     return out_png
 
@@ -652,11 +745,11 @@ def build_manual_reel(
     seg_paths: list[Path] = []
 
     if overlay_positions is None:
-        overlay_positions = [(0.5, 0.5)] * n
+        overlay_positions = [DEFAULT_OVERLAY_ANCHOR] * n
     if overlay_font_scales is None:
         overlay_font_scales = [1.0] * n
     if len(overlay_positions) < n:
-        overlay_positions = list(overlay_positions) + [(0.5, 0.72)] * (n - len(overlay_positions))
+        overlay_positions = list(overlay_positions) + [DEFAULT_OVERLAY_ANCHOR] * (n - len(overlay_positions))
     if len(overlay_font_scales) < n:
         overlay_font_scales = list(overlay_font_scales) + [1.0] * (n - len(overlay_font_scales))
 
@@ -666,7 +759,7 @@ def build_manual_reel(
     for i, src in enumerate(media_paths):
         seg = seg_list[i]
         ov = reel_work / f"overlay_{i:02d}.png"
-        anchor = overlay_positions[i] if i < len(overlay_positions) else (0.5, 0.72)
+        anchor = overlay_positions[i] if i < len(overlay_positions) else DEFAULT_OVERLAY_ANCHOR
         fs = overlay_font_scales[i] if i < len(overlay_font_scales) else 1.0
         cap_i = captions[i] if i < len(captions) else ""
         tit_i = (tit_list[i] if i < len(tit_list) else "").strip()

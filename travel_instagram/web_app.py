@@ -656,6 +656,8 @@ async def api_upload_reel_generate(
     hook_seconds: str = Form(default="3"),
     clip_seconds_image: str = Form(default="3"),
     clip_seconds_video: str = Form(default="5"),
+    overlay_anchor_x: str = Form(default="0.5"),
+    overlay_anchor_y: str = Form(default="0.1"),
 ) -> JSONResponse:
     if music_track_id == "__auto__":
         music_track_id = None
@@ -720,6 +722,17 @@ async def api_upload_reel_generate(
         clip_vid = 5.0
     clip_img = max(0.5, min(90.0, clip_img))
     clip_vid = max(0.5, min(90.0, clip_vid))
+
+    try:
+        oax = float((overlay_anchor_x or "0.5").strip() or "0.5")
+    except ValueError:
+        oax = 0.5
+    try:
+        oay = float((overlay_anchor_y or "0.1").strip() or "0.1")
+    except ValueError:
+        oay = 0.1
+    oax = max(0.05, min(0.95, oax))
+    oay = max(0.05, min(0.92, oay))
 
     if items_json:
         try:
@@ -874,8 +887,8 @@ async def api_upload_reel_generate(
         overlay_positions = [manual_reel_builder.DEFAULT_OVERLAY_ANCHOR] * len(media_paths)
         overlay_font_scales = [requested_font_scale] * len(media_paths)
 
-    # Middle-upper safe band for title + caption (Google Fonts overlay in manual_reel_builder).
-    overlay_positions = [manual_reel_builder.DEFAULT_OVERLAY_ANCHOR] * len(media_paths)
+    # User-controlled anchor (0–1): center of the caption block on the frame.
+    overlay_positions = [(oax, oay)] * len(media_paths)
     overlay_font_scales = [requested_font_scale] * len(media_paths)
 
     try:
