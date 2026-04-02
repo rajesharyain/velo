@@ -658,6 +658,7 @@ async def api_upload_reel_generate(
     clip_seconds_video: str = Form(default="5"),
     overlay_anchor_x: str = Form(default="0.5"),
     overlay_anchor_y: str = Form(default="0.15"),
+    show_branding: str = Form(default="1"),
 ) -> JSONResponse:
     if music_track_id == "__auto__":
         music_track_id = None
@@ -734,6 +735,9 @@ async def api_upload_reel_generate(
         oay = 0.15
     oax = max(0.05, min(0.95, oax))
     oay = max(0.05, min(0.92, oay))
+
+    _sb = str(show_branding or "1").strip().lower()
+    show_brand_on_reel = _sb not in ("0", "false", "no", "off")
 
     if items_json:
         try:
@@ -922,6 +926,7 @@ async def api_upload_reel_generate(
             hook_seconds=hook_sec_f,
             image_segment_seconds=clip_img,
             video_segment_seconds=clip_vid,
+            show_branding=show_brand_on_reel,
         )
         out = dict(res)
         out["video_url"] = _to_media_url(out.get("output_path") or "") or None

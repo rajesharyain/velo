@@ -247,6 +247,10 @@
               <label for="adHookSeconds" style="margin:0;">Hook seconds</label>
               <input type="number" id="adHookSeconds" min="0.5" max="12" step="0.5" value="3" />
             </div>
+            <label class="row" style="margin-top:10px; align-items:center; cursor:pointer;">
+              <input type="checkbox" id="adShowBranding" checked style="width:auto; margin-right:8px;" />
+              <span class="muted" style="font-weight:600;">Show branding on reel</span>
+            </label>
           </div>
           <div id="adBuildStatus" class="status muted"></div>
           <a id="adBuildLink" href="#" target="_blank" rel="noopener" style="display:none;">Open generated MP4</a>
@@ -294,6 +298,7 @@
     const adXfadePct = document.getElementById("adXfadePct");
     const adHookCaption = document.getElementById("adHookCaption");
     const adHookSeconds = document.getElementById("adHookSeconds");
+    const adShowBranding = document.getElementById("adShowBranding");
     const adClipSecondsImage = document.getElementById("adClipSecondsImage");
     const adClipSecondsVideo = document.getElementById("adClipSecondsVideo");
     const adOverlayAnchorX = document.getElementById("adOverlayAnchorX");
@@ -778,6 +783,7 @@
       let mid = adMusic.value;
       if (mid === "__auto__") mid = "";
       fd.append("music_track_id", mid);
+      fd.append("show_branding", adShowBranding && adShowBranding.checked ? "1" : "0");
 
       try {
         const res = await fetch("/api/upload-reel/generate", { method: "POST", body: fd });

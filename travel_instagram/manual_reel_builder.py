@@ -532,6 +532,7 @@ def _render_hook_overlay_png(
     font_scale: float,
     frame_w: int,
     frame_h: int,
+    show_branding: bool = True,
 ) -> Path:
     out_png.parent.mkdir(parents=True, exist_ok=True)
     img = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))
@@ -552,7 +553,8 @@ def _render_hook_overlay_png(
 
     frags = _split_hook_preserve_space(hook_text)
     if not frags:
-        _draw_reel_brand_badge(draw, frame_w, frame_h)
+        if show_branding:
+            _draw_reel_brand_badge(draw, frame_w, frame_h)
         img.save(out_png)
         return out_png
 
@@ -605,7 +607,8 @@ def _render_hook_overlay_png(
             x += frag_w
         y_cursor += line_asc + line_desc + line_gap
 
-    _draw_reel_brand_badge(draw, frame_w, frame_h)
+    if show_branding:
+        _draw_reel_brand_badge(draw, frame_w, frame_h)
     img.save(out_png)
     return out_png
 
@@ -621,6 +624,7 @@ def _render_caption_overlay(
     font_scale: float = 1.0,
     hook_mode: bool = False,
     hook_location_hint: str = "",
+    show_branding: bool = True,
 ) -> Path:
     w, h = config.REEL_SIZE
     out_png.parent.mkdir(parents=True, exist_ok=True)
@@ -645,7 +649,8 @@ def _render_caption_overlay(
     pad_y = int(max(20, h * 0.022))
 
     if not title_t and not body_t and not sub_t:
-        _draw_reel_brand_badge(draw, w, h)
+        if show_branding:
+            _draw_reel_brand_badge(draw, w, h)
         img.save(out_png)
         return out_png
 
@@ -659,6 +664,7 @@ def _render_caption_overlay(
             font_scale=font_scale,
             frame_w=w,
             frame_h=h,
+            show_branding=show_branding,
         )
 
     # No location title: centered block(s) — optional place blurb + body
@@ -674,7 +680,8 @@ def _render_caption_overlay(
         sub_lines = _wrap_words_to_lines(draw, sub_t, sub_font, max_w, 4) if sub_t else []
         body_lines = _wrap_words_to_lines(draw, body_t, body_font, max_w, 5) if body_t else []
         if not sub_lines and not body_lines:
-            _draw_reel_brand_badge(draw, w, h)
+            if show_branding:
+                _draw_reel_brand_badge(draw, w, h)
             img.save(out_png)
             return out_png
 
@@ -742,7 +749,8 @@ def _render_caption_overlay(
                     stroke_fill=(0, 0, 0, 150),
                 )
                 cy_line += (bb[3] - bb[1]) + line_gap
-        _draw_reel_brand_badge(draw, w, h)
+        if show_branding:
+            _draw_reel_brand_badge(draw, w, h)
         img.save(out_png)
         return out_png
 
@@ -877,19 +885,19 @@ def _render_caption_overlay(
         )
         cy_line += (bb[3] - bb[1]) + line_gap
 
-    _draw_reel_brand_badge(draw, w, h)
+    if show_branding:
+        _draw_reel_brand_badge(draw, w, h)
     img.save(out_png)
     return out_png
 
 
-def _vf_cover_overlay_chain(w: int, h: int) -> str:
+def _vf_contain_overlay_chain(w: int, h: int) -> str:
     """
-    Scale and center-crop to fill the reel frame (same idea as CSS ``object-fit: cover``),
-    then draw the caption overlay.
+    Scale to fit inside the reel frame and pad (CSS ``object-fit: contain``), then overlay captions.
     """
     return (
-        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=increase:flags=lanczos,"
-        f"crop={w}:{h}:(iw-ow)/2:(ih-oh)/2,setsar=1,format=yuv420p,fps=30[v];"
+        f"[0:v]scale={w}:{h}:force_original_aspect_ratio=decrease:flags=lanczos,"
+        f"pad={w}:{h}:(ow-iw)/2:(oh-ih)/2:color=black,setsar=1,format=yuv420p,fps=30[v];"
         f"[1:v]format=rgba[ov];[v][ov]overlay=0:0:format=auto"
     )
 
@@ -907,7 +915,7 @@ def _make_segment_from_image(src: Path, overlay_png: Path, out_mp4: Path, second
         "-i",
         str(overlay_png),
         "-filter_complex",
-        _vf_cover_overlay_chain(w, h),
+        _vf_contain_overlay_chain(w, h),
         "-an",
         "-c:v",
         "libx264",
@@ -938,7 +946,7 @@ def _make_segment_from_video(src: Path, overlay_png: Path, out_mp4: Path, second
         "-i",
         str(overlay_png),
         "-filter_complex",
-        _vf_cover_overlay_chain(w, h),
+        _vf_contain_overlay_chain(w, h),
         "-an",
         "-c:v",
         "libx264",
@@ -1006,6 +1014,7 @@ def build_manual_reel(
     hook_seconds: float = 3.0,
     image_segment_seconds: float = 3.0,
     video_segment_seconds: float = 5.0,
+    show_branding: bool = True,
 ) -> dict[str, Any]:
     if not media_paths:
         raise RuntimeError("Upload at least one image or video.")
@@ -1092,6 +1101,8 @@ def build_manual_reel(
     hook_raw = (hook_caption or "").strip()
     hook_dur_req = max(0.0, float(hook_seconds))
 
+    prev_overlay_title = ""
+    prev_caption_text = ""
     for i, src in enumerate(media_paths):
         seg = seg_list[i]
         ov = reel_work / f"overlay_{i:02d}.png"
@@ -1109,15 +1120,26 @@ def build_manual_reel(
             stripped = strip_leading_title_from_caption(cap_clean, tit_i).strip()
             if stripped:
                 cap_clean = stripped
+        sub_overlay = sub_i
+        if (
+            i > 0
+            and sub_i
+            and tit_i == prev_overlay_title
+            and sub_i == prev_caption_text
+        ):
+            sub_overlay = ""
         _render_caption_overlay(
             ov,
             cap_clean,
             title=tit_i,
-            caption_text=sub_i,
+            caption_text=sub_overlay,
             anchor_x=anchor[0],
             anchor_y=anchor[1],
             font_scale=fs,
+            show_branding=show_branding,
         )
+        prev_overlay_title = tit_i
+        prev_caption_text = sub_i
         segp = reel_work / f"seg_{i:02d}.mp4"
 
         use_hook = i == 0 and bool(hook_raw) and hook_dur_req > 0
@@ -1143,6 +1165,7 @@ def build_manual_reel(
                     font_scale=fs,
                     hook_mode=True,
                     hook_location_hint=tit_i,
+                    show_branding=show_branding,
                 )
                 hook_part = reel_work / f"seg_{i:02d}_hook.mp4"
                 if _is_video(src):
