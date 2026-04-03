@@ -177,14 +177,14 @@
       <div class="card">
         <h2>1. Images &amp; videos (Pexels)</h2>
         <p class="muted">Grouped by place. Check <strong>Use in reel</strong> for each image or video, then <strong>Build reel</strong>. The server uses files from <code>output/ad_reels_library/</code> when the same clip was saved there, and only downloads from Pexels if no local copy exists. <strong>Download</strong> saves one file in the browser. <strong>Save to project folder</strong> copies into the library and records your prompt — reopen from <a href="/ad-reels/library" style="color:#93c5fd;">Saved sessions</a>. <strong>ZIP</strong> downloads a single archive (remote or <code>/media/</code> URLs).</p>
+        <div id="adTopSelection" class="row" style="display:none; margin-top:12px;">
+          <button type="button" id="adSelAll" class="secondary">Select all</button>
+          <button type="button" id="adSelNone" class="secondary">Clear selection</button>
+        </div>
         <div id="mediaMount"></div>
         <div id="adReelToolbar" class="ad-reel-toolbar" style="display:none;">
-          <div class="row">
-            <button type="button" id="adSelAll" class="secondary">Select all</button>
-            <button type="button" id="adSelNone" class="secondary">Clear selection</button>
-            <button type="button" id="adDlSelected" class="secondary">Download selected (browser)</button>
-          </div>
           <div class="row" style="margin-top:10px;">
+            <button type="button" id="adDlSelected" class="secondary">Download selected (browser)</button>
             <button type="button" id="adSaveLibSelected" class="secondary" title="Copy checked clips + JSON into output/ad_reels_library">Save selected to project folder</button>
             <button type="button" id="adSaveLibAll" class="secondary" title="Copy every clip shown + JSON">Save ALL to project folder</button>
             <button type="button" id="adZipSelected" class="secondary">ZIP selected</button>
@@ -289,6 +289,7 @@
     const planMount = document.getElementById("planMount");
     const jsonPre = document.getElementById("jsonPre");
     const adReelToolbar = document.getElementById("adReelToolbar");
+    const adTopSelection = document.getElementById("adTopSelection");
     const adSelAll = document.getElementById("adSelAll");
     const adSelNone = document.getElementById("adSelNone");
     const adDlSelected = document.getElementById("adDlSelected");
@@ -570,7 +571,9 @@
         block.appendChild(grid);
         mediaMount.appendChild(block);
       });
-      adReelToolbar.style.display = places.length ? "block" : "none";
+      const hasPlaces = places.length > 0;
+      if (adTopSelection) adTopSelection.style.display = hasPlaces ? "flex" : "none";
+      adReelToolbar.style.display = hasPlaces ? "block" : "none";
     }
 
     function renderStructure(data) {
