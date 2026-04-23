@@ -252,6 +252,14 @@
               <span class="muted" style="font-weight:600;">Show branding on reel</span>
             </label>
           </div>
+          <div class="row" style="margin-top:14px; align-items:flex-end; flex-wrap:wrap; gap:12px;">
+            <div style="flex:1; min-width:220px; max-width:520px;">
+              <label for="adBlogTitle" style="margin-bottom:6px;">Travel blog title (optional)</label>
+              <input type="text" id="adBlogTitle" maxlength="220" placeholder="Defaults to first selected place name" style="width:100%; box-sizing:border-box;" />
+            </div>
+            <button type="button" id="adOpenBlog" class="secondary" style="margin-top:0;">Blog: use selection</button>
+          </div>
+          <p class="muted" style="margin:6px 0 0; font-size:12px;">Opens <a href="/travel-blog" style="color:#93c5fd;">Travel blog</a> with checked tiles in order (URLs + place blurbs as captions).</p>
           <div id="adBuildStatus" class="status muted"></div>
           <a id="adBuildLink" href="#" target="_blank" rel="noopener" style="display:none;">Open generated MP4</a>
         </div>
@@ -307,6 +315,8 @@
     const adOverlayAnchorXVal = document.getElementById("adOverlayAnchorXVal");
     const adOverlayAnchorYVal = document.getElementById("adOverlayAnchorYVal");
     const adBuildReel = document.getElementById("adBuildReel");
+    const adBlogTitle = document.getElementById("adBlogTitle");
+    const adOpenBlog = document.getElementById("adOpenBlog");
     const adBuildStatus = document.getElementById("adBuildStatus");
     const adBuildLink = document.getElementById("adBuildLink");
     const adSaveLibSelected = document.getElementById("adSaveLibSelected");
@@ -811,6 +821,36 @@
         adBuildReel.disabled = false;
       }
     });
+
+    if (adOpenBlog) {
+      adOpenBlog.addEventListener("click", () => {
+        const items = [];
+        document.querySelectorAll("#mediaMount .media-tile-wrap").forEach((wrap) => {
+          const cb = wrap.querySelector(".adPick");
+          if (!cb || !cb.checked) return;
+          const url = (wrap.dataset.url || "").trim();
+          if (!url) return;
+          const rawBlurb = (wrap.dataset.captionText || "").trim();
+          items.push({ url, caption: rawBlurb, place: (wrap.dataset.placeName || "").trim() });
+        });
+        if (!items.length) {
+          adBuildStatus.className = "status err";
+          adBuildStatus.textContent = "Select at least one tile (Use in reel) to open the blog generator.";
+          return;
+        }
+        let title = (adBlogTitle && adBlogTitle.value) ? adBlogTitle.value.trim() : "";
+        if (!title) {
+          const place = items.map((x) => x.place).find((p) => !!p);
+          title = place || "Travel diary";
+        }
+        sessionStorage.setItem("velo_blog_prefill", JSON.stringify({
+          title,
+          images: items.map((x) => x.url),
+          captions: items.map((x) => x.caption || ""),
+        }));
+        window.location.href = "/travel-blog";
+      });
+    }
 
     runBtn.addEventListener("click", async () => {
       const query = (qInput.value || "").trim();

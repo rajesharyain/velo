@@ -521,3 +521,122 @@ def parse_reel_prompt(prompt: str, api_key: str | None = None) -> dict[str, Any]
         "image_keywords": image_keywords,
         "video_keywords": video_keywords,
     }
+
+
+_BLOG_MAX_IMAGES = 20
+_BLOG_TITLE_MAX = 200
+_BLOG_CAPTION_MAX = 800
+
+
+_TRAVEL_BLOG_SYSTEM_PROMPT = """You are an elite travel copywriter who writes viral, shareable blog posts.
+
+You will receive JSON with:
+- title: the blog headline (use as the main theme)
+- images: ordered list of absolute image URLs (https only)
+- captions: parallel list of short notes per image (same length as images; may be empty strings)
+
+TASK:
+1) Read the title and every caption. Build one cohesive, emotional travel story.
+2) Output ONLY valid JSON (no markdown fences) with exactly this shape:
+   {"html": "<!DOCTYPE html>...full document..."}
+
+RULES FOR THE HTML STRING:
+- Must be a complete HTML5 document: <!DOCTYPE html>, <html lang="en">, <head>, <body>.
+- <head> must include: <meta charset="utf-8">, <meta name="viewport" content="width=device-width, initial-scale=1">, <title>…</title> (use the user title),
+  <meta name="description" content="…"> (one compelling SEO sentence, no quotes breaking the attribute),
+  and a <style> block for a clean, modern, mobile-first article layout (max-width ~720–800px centered, readable font-size/line-height, generous spacing).
+- Start <body> with <h1> using the user title (you may lightly polish for punch, do not change the destination/topic).
+- Open with a short viral hook (1–2 paragraphs): immersive, fun, slightly dramatic, second-person or vivid narrator.
+- For EACH image URL in order: insert <figure> with <img src="EXACT_URL_FROM_INPUT" alt="…" loading="lazy" /> and a <figcaption> if the matching caption is non-empty; weave story paragraphs before/after images naturally.
+- Use ONLY the image URLs provided in the input JSON — copy them character-for-character into src attributes.
+- Short paragraphs (2–4 sentences max each). Optional <h2> section breaks.
+- Add a closing section with 2–4 suggested hashtags as plain text (e.g. line starting "Hashtags:") — no HTML script tags.
+- Do NOT include <script> tags, iframes, or external stylesheets. Inline <style> only in <head>.
+- Escape any < or & inside text content properly as HTML entities where needed.
+
+TONE: viral travel blog — wonder, FOMO, sensory detail, light humor; avoid cliché lists; no fake facts about specific places beyond what captions imply.
+"""
+
+
+def generate_travel_blog_html(
+    title: str,
+    images: list[str],
+    captions: list[str] | None = None,
+    *,
+    api_key: str | None = None,
+) -> dict[str, Any]:
+    """
+    Call Groq to produce a full HTML document (blog page) from a title, image URLs, and per-image captions.
+
+    Returns ``{"html": str, "groq_model": str}``. Raises RuntimeError on missing key or invalid model output.
+    """
+    key = api_key or config.GROQ_API_KEY
+    if not key:
+        raise RuntimeError(
+            "GROQ_API_KEY is not set. Add it to your environment or .env file."
+        )
+
+    t = (title or "").strip()
+    if not t:
+        raise RuntimeError("Blog title is required.")
+    if len(t) > _BLOG_TITLE_MAX:
+        t = t[:_BLOG_TITLE_MAX]
+
+    imgs: list[str] = []
+    for u in images or []:
+        s = str(u).strip()
+        if not s:
+            continue
+        if not (s.startswith("https://") or s.startswith("http://")):
+            raise RuntimeError(f"Invalid image URL (must be http(s)): {s[:80]}")
+        imgs.append(s)
+    if not imgs:
+        raise RuntimeError("At least one image URL is required.")
+    if len(imgs) > _BLOG_MAX_IMAGES:
+        imgs = imgs[:_BLOG_MAX_IMAGES]
+
+    caps_in = list(captions) if captions else []
+    caps: list[str] = []
+    for i in range(len(imgs)):
+        raw = caps_in[i] if i < len(caps_in) else ""
+        c = str(raw or "").strip()
+        if len(c) > _BLOG_CAPTION_MAX:
+            c = c[:_BLOG_CAPTION_MAX]
+        caps.append(c)
+
+    payload = {"title": t, "images": imgs, "captions": caps}
+
+    client = Groq(api_key=key)
+    completion = client.chat.completions.create(
+        model=config.GROQ_MODEL,
+        messages=[
+            {"role": "system", "content": _TRAVEL_BLOG_SYSTEM_PROMPT},
+            {
+                "role": "user",
+                "content": json.dumps(payload, ensure_ascii=False),
+            },
+        ],
+        temperature=0.75,
+        max_tokens=8192,
+        response_format={"type": "json_object"},
+    )
+
+    raw = completion.choices[0].message.content
+    if not raw:
+        raise RuntimeError("Groq returned an empty response.")
+
+    try:
+        parsed = _extract_json_object(raw)
+    except json.JSONDecodeError as e:
+        logger.error("Blog Groq JSON parse error: %s\nRaw: %s", e, raw[:800])
+        raise RuntimeError("Groq response was not valid JSON.") from e
+
+    html = parsed.get("html")
+    if not isinstance(html, str) or not html.strip():
+        raise RuntimeError('Groq JSON must include a non-empty string "html" field.')
+
+    html_out = html.strip()
+    if "<script" in html_out.lower():
+        raise RuntimeError("Generated HTML contained disallowed script tags.")
+
+    return {"html": html_out, "groq_model": config.GROQ_MODEL}

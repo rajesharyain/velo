@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    body { margin: 0; font-family: Inter, system-ui, Arial, sans-serif; background: #0b1220; color: #e7ecf5; }
+    .wrap { max-width: 920px; margin: 0 auto; padding: 20px; }
+    .card { background: #111a2d; border: 1px solid #26324a; border-radius: 14px; padding: 16px; margin-top: 14px; }
+    .muted { color: #9ca8bf; font-size: 13px; }
+    label { display: block; font-weight: 700; margin-bottom: 6px; font-size: 13px; }
+    input[type=text], textarea, button {
+      background: #0d1525; color: #e7ecf5; border: 1px solid #2a3650; border-radius: 10px; padding: 10px 12px;
+      font-family: inherit; width: 100%; box-sizing: border-box;
+    }
+    textarea { min-height: 64px; resize: vertical; }
+    button { width: auto; cursor: pointer; font-weight: 600; margin-top: 0; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+    .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 10px; }
+    .row button { margin-top: 0; }
+    .item-row {
+      border: 1px solid #2a3650; border-radius: 12px; padding: 12px; margin-top: 10px; background: #0f182a;
+    }
+    .item-row .grid { display: grid; gap: 10px; }
+    @media (min-width: 640px) {
+      .item-row .grid { grid-template-columns: 1fr 1fr; }
+    }
+    .status { margin-top: 10px; min-height: 20px; font-size: 14px; }
+    .err { color: #f87171; }
+    .ok { color: #86efac; }
+    .preview-wrap {
+      margin-top: 12px; border-radius: 12px; overflow: hidden; border: 1px solid #2a3650;
+      background: #fff; min-height: 200px;
+    }
+    .preview-wrap iframe { width: 100%; min-height: 520px; border: none; display: block; background: #fff; }
+    .toolbar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+    .secondary { background: #1e3a5f; border-color: #2a5080; }
+    .primary { background: #2563eb; border-color: #3b82f6; }
+    h2 { margin: 0 0 8px; font-size: 1.1rem; }
+    pre.json-block {
+      margin: 0; padding: 12px; background: #070b14; border: 1px solid #26324a; border-radius: 10px;
+      font-size: 12px; line-height: 1.45; color: #cbd5e1; overflow: auto; max-height: 280px;
+      white-space: pre-wrap; word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    {% include "_nav.html" %}
+    <div class="card">
+      <h2 style="margin:0 0 6px;">Viral travel blog (Groq)</h2>
+      <p class="muted">Enter a <strong>title</strong>, then one row per <strong>image URL</strong> with an optional <strong>caption</strong> (story hints). Click <strong>Create blog</strong> to generate a full HTML page you can preview and copy.</p>
+      <label for="blogTitle">Blog title</label>
+      <input type="text" id="blogTitle" placeholder="e.g. Porto at night stole my heart" maxlength="220" autocomplete="off" />
+
+      <div id="rows"></div>
+
+      <div class="toolbar">
+        <button type="button" id="addRowBtn" class="secondary">+ Add image row</button>
+        <button type="button" id="createBtn" class="primary">Create blog</button>
+        <button type="button" id="copyBtn" class="secondary" disabled>Copy blog HTML</button>
+        <button type="button" id="copyRequestJsonBtn" class="secondary" disabled>Copy input JSON</button>
+        <button type="button" id="copyResponseJsonBtn" class="secondary" disabled>Copy API response JSON</button>
+      </div>
+      <div id="statusEl" class="status muted"></div>
+    </div>
+
+    <div class="card" id="jsonCard" style="display:none;">
+      <h2>JSON</h2>
+      <p class="muted">Same keys as the API / Groq user message: <code>title</code>, <code>images</code>, <code>captions</code>. Preview below; copy buttons include full strings (response JSON includes the full <code>html</code>).</p>
+      <label style="margin-top:10px;">Input (request body)</label>
+      <pre id="requestJsonOut" class="json-block" aria-label="Request JSON"></pre>
+      <label style="margin-top:14px;">Response summary (full <code>html</code> omitted here — use Copy API response JSON)</label>
+      <pre id="responseJsonSummaryOut" class="json-block" aria-label="Response summary"></pre>
+    </div>
+
+    <div class="card" id="previewCard" style="display:none;">
+      <h2>Preview</h2>
+      <p class="muted">Rendered in a sandboxed frame (no scripts). Copied HTML is the full document from Groq.</p>
+      <div class="preview-wrap">
+        <iframe id="previewFrame" title="Blog preview" sandbox="allow-same-origin"></iframe>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PREFILL_KEY = "velo_blog_prefill";
+    const rowsEl = document.getElementById("rows");
+    const blogTitle = document.getElementById("blogTitle");
+    const addRowBtn = document.getElementById("addRowBtn");
+    const createBtn = document.getElementById("createBtn");
+    const copyBtn = document.getElementById("copyBtn");
+    const copyRequestJsonBtn = document.getElementById("copyRequestJsonBtn");
+    const copyResponseJsonBtn = document.getElementById("copyResponseJsonBtn");
+    const statusEl = document.getElementById("statusEl");
+    const jsonCard = document.getElementById("jsonCard");
+    const requestJsonOut = document.getElementById("requestJsonOut");
+    const responseJsonSummaryOut = document.getElementById("responseJsonSummaryOut");
+    const previewCard = document.getElementById("previewCard");
+    const previewFrame = document.getElementById("previewFrame");
+
+    let lastHtml = "";
+    let lastRequestJsonText = "";
+    let lastResponseJsonText = "";
+
+    function addRow(imageUrl = "", caption = "") {
+      const wrap = document.createElement("div");
+      wrap.className = "item-row";
+      wrap.innerHTML = `
+        <div class="grid">
+          <div>
+            <label>Image URL (https)</label>
+            <input type="text" class="img-url" placeholder="https://..." value="" />
+          </div>
+          <div>
+            <label>Caption / note for this shot</label>
+            <textarea class="img-cap" rows="2" placeholder="What this photo shows or how it felt…"></textarea>
+          </div>
+        </div>
+        <div class="toolbar" style="margin-top:10px;">
+          <button type="button" class="remove-row secondary">Remove row</button>
+        </div>
+      `;
+      wrap.querySelector(".img-url").value = imageUrl;
+      wrap.querySelector(".img-cap").value = caption;
+      wrap.querySelector(".remove-row").addEventListener("click", () => {
+        if (rowsEl.querySelectorAll(".item-row").length <= 1) return;
+        wrap.remove();
+      });
+      rowsEl.appendChild(wrap);
+    }
+
+    function collectPayload() {
+      const title = (blogTitle.value || "").trim();
+      const images = [];
+      const captions = [];
+      rowsEl.querySelectorAll(".item-row").forEach((row) => {
+        const u = (row.querySelector(".img-url")?.value || "").trim();
+        const c = (row.querySelector(".img-cap")?.value || "").trim();
+        if (u) {
+          images.push(u);
+          captions.push(c);
+        }
+      });
+      return { title, images, captions };
+    }
+
+    function applyPrefill() {
+      const raw = sessionStorage.getItem(PREFILL_KEY);
+      if (!raw) return;
+      sessionStorage.removeItem(PREFILL_KEY);
+      try {
+        const o = JSON.parse(raw);
+        if (o.title) blogTitle.value = String(o.title);
+        const imgs = Array.isArray(o.images) ? o.images : [];
+        const caps = Array.isArray(o.captions) ? o.captions : [];
+        rowsEl.innerHTML = "";
+        if (imgs.length) {
+          imgs.forEach((u, i) => addRow(String(u || ""), String(caps[i] || "")));
+        } else {
+          addRow();
+        }
+      } catch (_) {
+        addRow();
+      }
+    }
+
+    addRowBtn.addEventListener("click", () => addRow());
+    createBtn.addEventListener("click", async () => {
+      const { title, images, captions } = collectPayload();
+      if (!title) {
+        statusEl.className = "status err";
+        statusEl.textContent = "Add a blog title.";
+        return;
+      }
+      if (!images.length) {
+        statusEl.className = "status err";
+        statusEl.textContent = "Add at least one image URL.";
+        return;
+      }
+      createBtn.disabled = true;
+      copyBtn.disabled = true;
+      copyRequestJsonBtn.disabled = true;
+      copyResponseJsonBtn.disabled = true;
+      lastHtml = "";
+      lastRequestJsonText = "";
+      lastResponseJsonText = "";
+      previewCard.style.display = "none";
+      jsonCard.style.display = "none";
+      if (requestJsonOut) requestJsonOut.textContent = "";
+      if (responseJsonSummaryOut) responseJsonSummaryOut.textContent = "";
+      statusEl.className = "status muted";
+      statusEl.textContent = "Generating viral blog…";
+      const requestPayload = { title, images, captions };
+      try {
+        const res = await fetch("/api/blog/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(requestPayload),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          const d = data.detail;
+          const msg = typeof d === "string" ? d : Array.isArray(d) ? JSON.stringify(d) : res.statusText;
+          throw new Error(msg || `HTTP ${res.status}`);
+        }
+        lastHtml = data.html || "";
+        if (!lastHtml) throw new Error("No html in response.");
+        lastRequestJsonText = JSON.stringify(requestPayload, null, 2);
+        lastResponseJsonText = JSON.stringify({ html: lastHtml, groq_model: data.groq_model ?? null }, null, 2);
+        const summaryObj = {
+          groq_model: data.groq_model ?? null,
+          html: `[omitted — ${lastHtml.length} characters; use “Copy API response JSON” for full payload]`,
+        };
+        if (requestJsonOut) requestJsonOut.textContent = lastRequestJsonText;
+        if (responseJsonSummaryOut) responseJsonSummaryOut.textContent = JSON.stringify(summaryObj, null, 2);
+        jsonCard.style.display = "block";
+        previewCard.style.display = "block";
+        previewFrame.srcdoc = lastHtml;
+        copyBtn.disabled = false;
+        copyRequestJsonBtn.disabled = false;
+        copyResponseJsonBtn.disabled = false;
+        statusEl.className = "status ok";
+        statusEl.textContent = "Done. Preview below — copy HTML or JSON when ready.";
+      } catch (e) {
+        statusEl.className = "status err";
+        statusEl.textContent = String(e && e.message ? e.message : e);
+      } finally {
+        createBtn.disabled = false;
+      }
+    });
+
+    copyBtn.addEventListener("click", async () => {
+      if (!lastHtml) return;
+      try {
+        await navigator.clipboard.writeText(lastHtml);
+        statusEl.className = "status ok";
+        statusEl.textContent = "Full HTML copied to clipboard.";
+      } catch (_) {
+        statusEl.className = "status err";
+        statusEl.textContent = "Clipboard failed — select and copy from a devtools Network response or save manually.";
+      }
+    });
+
+    copyRequestJsonBtn.addEventListener("click", async () => {
+      if (!lastRequestJsonText) return;
+      try {
+        await navigator.clipboard.writeText(lastRequestJsonText);
+        statusEl.className = "status ok";
+        statusEl.textContent = "Input JSON copied to clipboard.";
+      } catch (_) {
+        statusEl.className = "status err";
+        statusEl.textContent = "Clipboard failed for JSON.";
+      }
+    });
+
+    copyResponseJsonBtn.addEventListener("click", async () => {
+      if (!lastResponseJsonText) return;
+      try {
+        await navigator.clipboard.writeText(lastResponseJsonText);
+        statusEl.className = "status ok";
+        statusEl.textContent = "Full API response JSON (html + groq_model) copied to clipboard.";
+      } catch (_) {
+        statusEl.className = "status err";
+        statusEl.textContent = "Clipboard failed for response JSON.";
+      }
+    });
+
+    applyPrefill();
+    if (!rowsEl.querySelector(".item-row")) addRow();
+  </script>
+</body>
+</html>

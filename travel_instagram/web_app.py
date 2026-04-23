@@ -174,6 +174,14 @@ class AdReelsZipBody(BaseModel):
     items: list[AdReelsZipItem] = Field(..., min_length=1, max_length=32)
 
 
+class TravelBlogGenerateBody(BaseModel):
+    """Groq → full HTML travel blog from title + parallel captions + image URLs."""
+
+    title: str = Field(..., min_length=1, max_length=220)
+    captions: list[str] = Field(default_factory=list, max_length=24)
+    images: list[str] = Field(..., min_length=1, max_length=24)
+
+
 class AdReelsLibrarySaveBody(BaseModel):
     """Persist prompt + travel-media snapshot: downloads clips into ``output/ad_reels_library/``."""
 
@@ -468,6 +476,37 @@ async def upload_reel_page(request: Request) -> HTMLResponse:
             "nav_active": "upload_reel",
         },
     )
+
+
+@app.get("/travel-blog", response_class=HTMLResponse)
+async def travel_blog_page(request: Request) -> HTMLResponse:
+    """Viral travel blog generator (Groq) with HTML preview and copy."""
+    return templates.TemplateResponse(
+        "travel_blog.html",
+        {
+            "request": request,
+            "title": "Travel blog generator",
+            "nav_active": "travel_blog",
+        },
+    )
+
+
+@app.post("/api/blog/generate")
+async def api_blog_generate(body: TravelBlogGenerateBody) -> JSONResponse:
+    """Generate a full HTML blog page from title, image URLs, and captions (Groq)."""
+    try:
+        res = await asyncio.to_thread(
+            groq_service.generate_travel_blog_html,
+            body.title.strip(),
+            list(body.images),
+            list(body.captions),
+        )
+        return JSONResponse(content=res)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception:
+        logger.exception("Blog generation failed")
+        raise HTTPException(status_code=500, detail="Blog generation failed.") from None
 
 
 @app.post("/api/ad-reels/travel-media", response_model=TravelMediaResponse)
