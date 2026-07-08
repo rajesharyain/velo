@@ -935,6 +935,19 @@ async def instagram_publish(preview_id: str) -> JSONResponse:
     return JSONResponse({"ok": True, "ig_media_id": ig_media_id, "published_at": preview["published_at"]})
 
 
+@app.get("/api/youtube/channel")
+async def youtube_channel_info() -> JSONResponse:
+    """Return the YouTube channel connected to the configured credentials."""
+    from travel_instagram import youtube_service
+    if not youtube_service.youtube_credentials_configured():
+        raise HTTPException(status_code=503, detail="YouTube credentials not configured.")
+    try:
+        info = await asyncio.to_thread(youtube_service.get_channel_info)
+        return JSONResponse(info)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+
 @app.post("/api/youtube/publish/{preview_id}")
 async def youtube_publish(preview_id: str) -> JSONResponse:
     """Publish a saved preview as a YouTube Short."""

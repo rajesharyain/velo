@@ -18,7 +18,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 CLIENT_ID = input("Paste your YOUTUBE_CLIENT_ID: ").strip()
 CLIENT_SECRET = input("Paste your YOUTUBE_CLIENT_SECRET: ").strip()
 
-SCOPE = "https://www.googleapis.com/auth/youtube.upload"
+SCOPE = "https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly"
 
 # Find a free port for the local callback server
 with socket.socket() as s:

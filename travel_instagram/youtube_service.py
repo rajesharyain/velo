@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 _TOKEN_URL = "https://oauth2.googleapis.com/token"
 _UPLOAD_URL = "https://www.googleapis.com/upload/youtube/v3/videos"
+_CHANNELS_URL = "https://www.googleapis.com/youtube/v3/channels"
 _YOUTUBE_VIDEO_BASE = "https://www.youtube.com/shorts/"
 
 
@@ -47,6 +48,35 @@ def _get_access_token() -> str:
     if not token:
         raise RuntimeError(f"No access_token in response: {resp.text[:300]}")
     return token
+
+
+def get_channel_info() -> dict:
+    """Return the YouTube channel name, ID and URL for the configured account."""
+    access_token = _get_access_token()
+    resp = httpx.get(
+        _CHANNELS_URL,
+        params={"part": "snippet,statistics", "mine": "true"},
+        headers={"Authorization": f"Bearer {access_token}"},
+        timeout=15,
+    )
+    if not resp.is_success:
+        raise RuntimeError(f"YouTube channels API failed: {resp.status_code} {resp.text[:300]}")
+    items = resp.json().get("items", [])
+    if not items:
+        return {"error": "No YouTube channel found for this account."}
+    ch = items[0]
+    snippet = ch.get("snippet", {})
+    stats = ch.get("statistics", {})
+    custom = snippet.get("customUrl", "")
+    channel_id = ch.get("id", "")
+    return {
+        "channel_name": snippet.get("title", ""),
+        "channel_id": channel_id,
+        "channel_url": f"https://www.youtube.com/channel/{channel_id}",
+        "custom_url": f"https://www.youtube.com/{custom}" if custom else "",
+        "subscribers": stats.get("subscriberCount", "—"),
+        "video_count": stats.get("videoCount", "—"),
+    }
 
 
 def publish_short(
