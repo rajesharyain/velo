@@ -658,15 +658,6 @@ def _render_caption_overlay(
             show_branding=show_branding,
         )
 
-    # ── Gradient scrim behind text (covers 25%–58% of frame height) ─────
-    grad_start_y = int(h * 0.25)
-    grad_end_y   = int(h * 0.58)
-    mid_y = (grad_start_y + grad_end_y) // 2
-    for gy in range(grad_start_y, grad_end_y):
-        dist = abs(gy - mid_y)
-        alpha = int(180 * max(0.0, 1.0 - (dist / max(1, mid_y - grad_start_y)) ** 1.2))
-        draw.line([(0, gy), (w - 1, gy)], fill=(0, 0, 0, alpha))
-
     # ── Day pill at top-right corner ──────────────────────────────────────
     if day_label:
         pill_font = _try_overlay_font_stack(
@@ -745,45 +736,51 @@ def _render_caption_overlay(
     body_stroke = max(1, int(round(font_scale * 0.9)))
 
     for ln in title_lines:
+        bb = draw.textbbox((0, 0), ln, font=title_font)
+        lw = bb[2] - bb[0]
+        lx = (w - lw) // 2
         draw.text(
-            (pad_x, cy_line),
+            (lx, cy_line),
             ln,
             font=title_font,
             fill=(255, 255, 255, 255),
             stroke_width=title_stroke,
             stroke_fill=(0, 0, 0, 180),
         )
-        bb = draw.textbbox((0, 0), ln, font=title_font)
         cy_line += (bb[3] - bb[1]) + line_gap
 
     if title_lines and (sub_lines or body_lines):
         cy_line += block_gap - line_gap
 
     for ln in sub_lines:
+        bb = draw.textbbox((0, 0), ln, font=sub_font)
+        lw = bb[2] - bb[0]
+        lx = (w - lw) // 2
         _draw_text_with_drop_shadow(
             draw,
-            (pad_x, cy_line),
+            (lx, cy_line),
             ln,
             sub_font,
             (215, 228, 255, 240),
             stroke_w=sub_stroke,
         )
-        bb = draw.textbbox((0, 0), ln, font=sub_font)
         cy_line += (bb[3] - bb[1]) + line_gap
 
     if sub_lines and body_lines:
         cy_line += block_gap - line_gap
 
     for ln in body_lines:
+        bb = draw.textbbox((0, 0), ln, font=body_font)
+        lw = bb[2] - bb[0]
+        lx = (w - lw) // 2
         draw.text(
-            (pad_x, cy_line),
+            (lx, cy_line),
             ln,
             font=body_font,
             fill=(195, 212, 240, 225),
             stroke_width=body_stroke,
             stroke_fill=(0, 0, 0, 140),
         )
-        bb = draw.textbbox((0, 0), ln, font=body_font)
         cy_line += (bb[3] - bb[1]) + line_gap
 
     if show_branding:

@@ -4,27 +4,38 @@
 #
 # Usage:
 #   ./scripts/install_schedule.sh              # runs at 09:00 and 18:00 (default)
-#   ./scripts/install_schedule.sh 8 20         # runs at 08:00 and 20:00
+#   ./scripts/install_schedule.sh 21 15 0 0   # runs at 21:15 and 00:00
 #
 # What it does:
-#   1. Creates velo.config.env from example (if it doesn't exist yet)
-#   2. Writes ~/Library/LaunchAgents/com.velo.runner.plist
-#   3. Loads the plist so it takes effect immediately (no reboot needed)
-#   4. Activates the n8n workflow so the webhook URL is live
+#   1. Creates velo.config.env in ~/Documents/Apps/velo (if missing)
+#   2. Copies config + docker-compose files into ~/Library (no FDA needed)
+#   3. Writes a self-contained runner to ~/Library/Scripts/velo-runner.sh
+#   4. Writes ~/Library/LaunchAgents/com.velo.runner.plist
+#   5. Loads the plist so it takes effect immediately (no reboot needed)
 # ─────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VELO_DIR="$(dirname "$SCRIPT_DIR")"
+
 PLIST_LABEL="com.velo.runner"
 PLIST_FILE="$HOME/Library/LaunchAgents/$PLIST_LABEL.plist"
-RUNNER_SCRIPT="$SCRIPT_DIR/run_velo.sh"
-CONFIG_FILE="$VELO_DIR/velo.config.env"
-CONFIG_EXAMPLE="$VELO_DIR/velo.config.env.example"
-LOG_DIR="$VELO_DIR/logs"
 
+# All runtime files live in ~/Library — accessible without Full Disk Access
+APP_SUPPORT="$HOME/Library/Application Support/Velo"
+LIB_SCRIPTS="$HOME/Library/Scripts"
+LOG_DIR="$HOME/Library/Logs/Velo"
+RUNNER_SCRIPT="$LIB_SCRIPTS/velo-runner.sh"
+
+# Config lives in project dir (edited by user) but is COPIED to ~/Library at install time
+PROJECT_CONFIG="$VELO_DIR/velo.config.env"
+PROJECT_CONFIG_EXAMPLE="$VELO_DIR/velo.config.env.example"
+
+# Schedule parameters: HOUR1 MIN1 HOUR2 MIN2
 HOUR1="${1:-9}"
-HOUR2="${2:-18}"
+MIN1="${2:-0}"
+HOUR2="${3:-18}"
+MIN2="${4:-0}"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -32,33 +43,31 @@ echo "  Velo Scheduler — Install"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# ── Step 1: Create config if missing ─────────────────────────────────────────
-if [[ ! -f "$CONFIG_FILE" ]]; then
-  cp "$CONFIG_EXAMPLE" "$CONFIG_FILE"
-  # Auto-fill VELO_DIR
-  sed -i '' "s|^VELO_DIR=.*|VELO_DIR=$VELO_DIR|" "$CONFIG_FILE"
-  echo "  ✓ Created: $CONFIG_FILE"
+# ── Step 1: Create project config if missing ─────────────────────────────────
+if [[ ! -f "$PROJECT_CONFIG" ]]; then
+  cp "$PROJECT_CONFIG_EXAMPLE" "$PROJECT_CONFIG"
+  sed -i '' "s|^VELO_DIR=.*|VELO_DIR=$VELO_DIR|" "$PROJECT_CONFIG"
+  echo "  ✓ Created: $PROJECT_CONFIG"
   echo ""
   echo "  ⚠️  ACTION REQUIRED:"
-  echo "  Open $CONFIG_FILE and set EXCEL_PATH to your Excel file."
+  echo "  Open $PROJECT_CONFIG and set EXCEL_PATH to your Excel file."
   echo "  Then re-run this script."
   echo ""
   exit 0
 else
-  # Ensure VELO_DIR is correct
-  sed -i '' "s|^VELO_DIR=.*|VELO_DIR=$VELO_DIR|" "$CONFIG_FILE"
-  echo "  ✓ Config: $CONFIG_FILE"
+  sed -i '' "s|^VELO_DIR=.*|VELO_DIR=$VELO_DIR|" "$PROJECT_CONFIG"
+  echo "  ✓ Config: $PROJECT_CONFIG"
 fi
 
-# ── Step 2: Validate Excel path ───────────────────────────────────────────────
+# ── Step 2: Validate config ───────────────────────────────────────────────────
 set -a
 # shellcheck disable=SC1090
-source "$CONFIG_FILE"
+source "$PROJECT_CONFIG"
 set +a
 
 if [[ -z "${EXCEL_PATH:-}" ]]; then
   echo ""
-  echo "  ERROR: EXCEL_PATH is not set in $CONFIG_FILE"
+  echo "  ERROR: EXCEL_PATH is not set in $PROJECT_CONFIG"
   echo "  Edit the file and set EXCEL_PATH=/path/to/your/reels-queue.xlsx"
   echo ""
   exit 1
@@ -71,16 +80,202 @@ if [[ ! -f "$EXCEL_PATH" ]]; then
   echo ""
 fi
 
-# ── Step 3: Make scripts executable ──────────────────────────────────────────
-chmod +x "$RUNNER_SCRIPT"
-chmod +x "$SCRIPT_DIR/uninstall_schedule.sh" 2>/dev/null || true
-mkdir -p "$LOG_DIR"
-echo "  ✓ Scripts are executable"
+# ── Step 3: Set up ~/Library directories ─────────────────────────────────────
+mkdir -p "$APP_SUPPORT" "$LIB_SCRIPTS" "$LOG_DIR"
+echo "  ✓ ~/Library directories ready"
 
-# ── Step 4: Write LaunchAgent plist ──────────────────────────────────────────
+# ── Step 4: Copy config and env files into ~/Library ─────────────────────────
+# Config
+cp "$PROJECT_CONFIG" "$APP_SUPPORT/velo.config.env"
+echo "  ✓ Config copied to $APP_SUPPORT/velo.config.env"
+
+# .env (API keys needed by docker containers)
+if [[ -f "$VELO_DIR/.env" ]]; then
+  cp "$VELO_DIR/.env" "$APP_SUPPORT/.env"
+  echo "  ✓ .env copied to $APP_SUPPORT/.env"
+else
+  echo "  WARNING: $VELO_DIR/.env not found — docker containers may lack API keys"
+fi
+
+# ── Step 5: Generate patched docker-compose.yml into ~/Library ───────────────
+# Replace relative paths with absolute ones so docker can run from ~/Library
+COMPOSE_SRC="$VELO_DIR/docker-compose.yml"
+COMPOSE_DST="$APP_SUPPORT/docker-compose.yml"
+
+sed \
+  -e "s|env_file: .env|env_file: $APP_SUPPORT/.env|g" \
+  -e "s|\./output|$VELO_DIR/output|g" \
+  -e "s|\./music|$VELO_DIR/music|g" \
+  "$COMPOSE_SRC" > "$COMPOSE_DST"
+
+echo "  ✓ docker-compose.yml patched to $COMPOSE_DST"
+
+# ── Step 6: Write the runner script into ~/Library/Scripts ───────────────────
+cat > "$RUNNER_SCRIPT" << 'RUNNER_EOF'
+#!/usr/bin/env bash
+# Velo daily runner — lives in ~/Library/Scripts to bypass macOS TCC restrictions.
+# Generated by install_schedule.sh. Do not edit manually; re-run install to update.
+set -euo pipefail
+
+APP_SUPPORT="$HOME/Library/Application Support/Velo"
+LOG_DIR="$HOME/Library/Logs/Velo"
+LOG_FILE="$LOG_DIR/velo-runner.log"
+COMPOSE_FILE="$APP_SUPPORT/docker-compose.yml"
+MAX_LOG_LINES=5000
+
+mkdir -p "$LOG_DIR"
+
+log() {
+  echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG_FILE"
+}
+
+rotate_log() {
+  if [[ -f "$LOG_FILE" ]]; then
+    local lines
+    lines=$(wc -l < "$LOG_FILE" 2>/dev/null || echo 0)
+    if [[ "$lines" -gt "$MAX_LOG_LINES" ]]; then
+      mv "$LOG_FILE" "${LOG_FILE}.old"
+      log "Log rotated (was ${lines} lines)"
+    fi
+  fi
+}
+rotate_log
+
+log "════════════════════════════════════════════"
+log "  Velo Daily Run — $(date '+%A %d %b %Y %H:%M')"
+log "════════════════════════════════════════════"
+
+CONFIG_FILE="$APP_SUPPORT/velo.config.env"
+if [[ ! -f "$CONFIG_FILE" ]]; then
+  log "ERROR: $CONFIG_FILE not found. Run install_schedule.sh again."
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+source "$CONFIG_FILE"
+set +a
+
+EXCEL_PATH="${EXCEL_PATH:-}"
+TRIGGER_COUNT="${TRIGGER_COUNT:-1}"
+TRIGGER_GAP_SECONDS="${TRIGGER_GAP_SECONDS:-15}"
+VELO_DIR="${VELO_DIR:-}"
+
+log "Excel path   : ${EXCEL_PATH:-<not set>}"
+log "Trigger count: $TRIGGER_COUNT"
+
+if [[ -z "$EXCEL_PATH" ]]; then
+  log "ERROR: EXCEL_PATH not set in config. Aborting."
+  exit 1
+fi
+
+if [[ ! -f "$EXCEL_PATH" ]]; then
+  log "ERROR: Excel file not found at: $EXCEL_PATH"
+  exit 1
+fi
+
+log "Excel file found ✓"
+
+# ── Ensure Docker is running ──────────────────────────────────────────────────
+export PATH="/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:$PATH"
+
+if ! docker info >/dev/null 2>&1; then
+  log "Docker not running — starting Docker Desktop..."
+  open -a Docker
+  for i in $(seq 1 18); do
+    sleep 5
+    if docker info >/dev/null 2>&1; then
+      log "Docker Desktop started ✓"
+      break
+    fi
+    log "Waiting for Docker... ($((i * 5))s)"
+  done
+  if ! docker info >/dev/null 2>&1; then
+    log "ERROR: Docker Desktop did not start within 90s. Aborting."
+    exit 1
+  fi
+else
+  log "Docker is running ✓"
+fi
+
+# ── Start containers via patched compose file in ~/Library ───────────────────
+log "Starting velo + n8n containers..."
+docker compose -f "$COMPOSE_FILE" up -d 2>&1 | while IFS= read -r line; do log "  docker: $line"; done
+log "Containers started ✓"
+
+# ── Wait for velo API ─────────────────────────────────────────────────────────
+log "Waiting for velo API (http://localhost:8000/api/health)..."
+velo_ready=0
+for i in $(seq 1 30); do
+  if curl -sf http://localhost:8000/api/health >/dev/null 2>&1; then
+    velo_ready=1
+    break
+  fi
+  sleep 3
+done
+
+if [[ "$velo_ready" -eq 0 ]]; then
+  log "ERROR: Velo API not healthy after 90s. Aborting."
+  exit 1
+fi
+log "Velo API healthy ✓"
+
+# ── Wait for n8n ──────────────────────────────────────────────────────────────
+log "Waiting for n8n (http://localhost:5678/healthz)..."
+n8n_ready=0
+for i in $(seq 1 20); do
+  if curl -sf http://localhost:5678/healthz >/dev/null 2>&1; then
+    n8n_ready=1
+    break
+  fi
+  sleep 3
+done
+
+if [[ "$n8n_ready" -eq 0 ]]; then
+  log "ERROR: n8n not healthy after 60s. Aborting."
+  exit 1
+fi
+log "n8n healthy ✓"
+
+# ── Fire the workflow ─────────────────────────────────────────────────────────
+WEBHOOK_URL="http://localhost:5678/webhook/velo-daily-run"
+log "Triggering workflow $TRIGGER_COUNT time(s) via: $WEBHOOK_URL"
+
+for i in $(seq 1 "$TRIGGER_COUNT"); do
+  log "  → Trigger $i/$TRIGGER_COUNT..."
+  HTTP_STATUS=$(curl -s -o /tmp/velo_trigger_resp.txt -w "%{http_code}" \
+    -X POST "$WEBHOOK_URL" \
+    -H "Content-Type: application/json" \
+    -d "{\"source\":\"launchagent\",\"run\":$i}" 2>&1) || HTTP_STATUS="error"
+
+  RESP_BODY=$(cat /tmp/velo_trigger_resp.txt 2>/dev/null || echo "")
+  log "     Status: $HTTP_STATUS"
+  [[ -n "$RESP_BODY" ]] && log "     Response: $(echo "$RESP_BODY" | head -c 200)"
+
+  if [[ "$HTTP_STATUS" != "200" ]] && [[ "$HTTP_STATUS" != "202" ]]; then
+    log "  WARNING: Trigger $i returned HTTP $HTTP_STATUS"
+  else
+    log "  Trigger $i fired successfully ✓"
+  fi
+
+  if [[ "$TRIGGER_COUNT" -gt 1 && "$i" -lt "$TRIGGER_COUNT" ]]; then
+    log "  Waiting ${TRIGGER_GAP_SECONDS}s before next trigger..."
+    sleep "$TRIGGER_GAP_SECONDS"
+  fi
+done
+
+log "════════════════════════════════════════════"
+log "  Run complete at $(date '+%H:%M:%S')"
+log "════════════════════════════════════════════"
+RUNNER_EOF
+
+chmod +x "$RUNNER_SCRIPT"
+echo "  ✓ Runner written: $RUNNER_SCRIPT"
+
+# ── Step 7: Write LaunchAgent plist ──────────────────────────────────────────
 mkdir -p "$HOME/Library/LaunchAgents"
 
-cat > "$PLIST_FILE" <<PLIST_EOF
+cat > "$PLIST_FILE" << PLIST_EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -94,34 +289,30 @@ cat > "$PLIST_FILE" <<PLIST_EOF
         <string>${RUNNER_SCRIPT}</string>
     </array>
 
-    <!-- Run at HOUR1:00 and HOUR2:00 every day -->
     <key>StartCalendarInterval</key>
     <array>
         <dict>
             <key>Hour</key>
             <integer>${HOUR1}</integer>
             <key>Minute</key>
-            <integer>0</integer>
+            <integer>${MIN1}</integer>
         </dict>
         <dict>
             <key>Hour</key>
             <integer>${HOUR2}</integer>
             <key>Minute</key>
-            <integer>0</integer>
+            <integer>${MIN2}</integer>
         </dict>
     </array>
 
-    <!-- Log output -->
     <key>StandardOutPath</key>
     <string>${LOG_DIR}/velo-runner.log</string>
     <key>StandardErrorPath</key>
     <string>${LOG_DIR}/velo-runner-error.log</string>
 
-    <!-- Do not run immediately on load, only on schedule -->
     <key>RunAtLoad</key>
     <false/>
 
-    <!-- PATH so docker/curl are found in the minimal LaunchAgent environment -->
     <key>EnvironmentVariables</key>
     <dict>
         <key>PATH</key>
@@ -135,47 +326,25 @@ PLIST_EOF
 
 echo "  ✓ LaunchAgent plist written: $PLIST_FILE"
 
-# ── Step 5: Load the LaunchAgent ─────────────────────────────────────────────
+# ── Step 8: Load the LaunchAgent ─────────────────────────────────────────────
 launchctl unload "$PLIST_FILE" 2>/dev/null || true
 launchctl load "$PLIST_FILE"
 echo "  ✓ LaunchAgent loaded"
-
-# ── Step 6: Activate n8n workflow (so webhook URL is live) ────────────────────
-N8N_API_KEY=$(grep "^N8N_API_KEY=" "$VELO_DIR/.env" 2>/dev/null | cut -d'=' -f2- || echo "")
-WORKFLOW_ID="UgNKfVqQNN0Rya6m"
-
-if [[ -n "$N8N_API_KEY" ]]; then
-  echo "  Activating n8n workflow..."
-  HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X PATCH "http://localhost:5678/api/v1/workflows/$WORKFLOW_ID" \
-    -H "X-N8N-API-KEY: $N8N_API_KEY" \
-    -H "Content-Type: application/json" \
-    -d '{"active": true}' 2>/dev/null) || HTTP_STATUS="error"
-
-  if [[ "$HTTP_STATUS" == "200" ]]; then
-    echo "  ✓ n8n workflow activated (webhook is live)"
-  else
-    echo "  ⚠️  Could not activate workflow (HTTP $HTTP_STATUS)."
-    echo "     Make sure n8n is running, then activate the workflow manually in the n8n UI."
-  fi
-else
-  echo "  ⚠️  N8N_API_KEY not found in .env — activate the workflow manually in n8n UI."
-fi
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "  ✅  Schedule installed successfully!"
 echo ""
-echo "  Runs at: ${HOUR1}:00 and ${HOUR2}:00 every day"
+echo "  Runs at: ${HOUR1}:$(printf '%02d' "${MIN1}") and ${HOUR2}:$(printf '%02d' "${MIN2}") every day"
 echo "  Excel  : $EXCEL_PATH"
 echo "  Log    : $LOG_DIR/velo-runner.log"
 echo ""
 echo "  To test it right now:"
 echo "    bash $RUNNER_SCRIPT"
 echo ""
-echo "  To change the schedule (e.g. 8am and 9pm):"
-echo "    ./scripts/install_schedule.sh 8 21"
+echo "  To change the schedule (e.g. 21:15 and midnight):"
+echo "    ./scripts/install_schedule.sh 21 15 0 0"
 echo ""
 echo "  To stop the schedule:"
 echo "    ./scripts/uninstall_schedule.sh"
