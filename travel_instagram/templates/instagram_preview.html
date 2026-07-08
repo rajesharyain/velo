@@ -329,14 +329,58 @@
         </div>
       </div>
 
-      <!-- Approval banner -->
-      <div class="approve-banner">
-        <h3>Ready to post to Instagram?</h3>
-        <p>Review the title, caption, hashtags, and keywords above. Once approved, the publish step will be enabled here.</p>
-        <span class="btn-approve" title="Instagram publishing coming soon">
-          Publish to Instagram (coming soon)
-        </span>
+      <!-- Publish panel -->
+      <div class="approve-banner" id="publish-panel">
+        {% if preview.status == 'published' %}
+          <h3 style="color:#4ade80;">✓ Published to Instagram</h3>
+          <p style="color:#aaa;">Posted on {{ preview.published_at[:10] if preview.published_at else '' }}
+            {% if preview.ig_media_id %}&nbsp;·&nbsp; Media ID: <code style="font-size:.78rem;color:#888;">{{ preview.ig_media_id }}</code>{% endif %}
+          </p>
+        {% else %}
+          <h3>Ready to post to Instagram?</h3>
+          <p>Review the caption, hashtags, and video above, then click Publish.</p>
+          <div id="pub-status" style="display:none;margin-bottom:.8rem;font-size:.85rem;"></div>
+          <button id="btn-publish"
+                  onclick="publishToInstagram('{{ preview.preview_id }}')"
+                  style="display:inline-block;padding:.7rem 2rem;border-radius:8px;
+                         background:linear-gradient(135deg,#7c83fd,#a855f7);
+                         border:none;color:#fff;font-size:.9rem;cursor:pointer;font-weight:600;">
+            Publish to Instagram
+          </button>
+        {% endif %}
       </div>
+      <script>
+      async function publishToInstagram(previewId) {
+        const btn = document.getElementById('btn-publish');
+        const status = document.getElementById('pub-status');
+        btn.disabled = true;
+        btn.textContent = 'Publishing…';
+        status.style.display = 'block';
+        status.style.color = '#aaa';
+        status.textContent = 'Uploading video container to Instagram — this takes ~30 seconds…';
+        try {
+          const res = await fetch('/api/instagram/publish/' + previewId, { method: 'POST' });
+          const data = await res.json();
+          if (res.ok && data.ok) {
+            status.style.color = '#4ade80';
+            status.textContent = '✓ Published! Media ID: ' + (data.ig_media_id || '—');
+            btn.textContent = '✓ Published';
+            btn.style.background = 'rgba(74,222,128,.2)';
+            btn.style.color = '#4ade80';
+          } else {
+            status.style.color = '#ef4444';
+            status.textContent = '✗ ' + (data.detail || data.message || 'Publish failed.');
+            btn.disabled = false;
+            btn.textContent = 'Retry Publish';
+          }
+        } catch (err) {
+          status.style.color = '#ef4444';
+          status.textContent = '✗ Network error: ' + err.message;
+          btn.disabled = false;
+          btn.textContent = 'Retry Publish';
+        }
+      }
+      </script>
 
     </div>
   </div>

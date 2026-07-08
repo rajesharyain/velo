@@ -855,6 +855,86 @@ async def instagram_preview_get(preview_id: str) -> JSONResponse:
     return JSONResponse(json.loads(f.read_text(encoding="utf-8")))
 
 
+@app.get("/api/instagram/credentials-status")
+async def instagram_credentials_status() -> JSONResponse:
+    from travel_instagram import instagram_service
+    configured = instagram_service.instagram_credentials_configured()
+    has_base_url = bool(config.PUBLIC_APP_BASE_URL)
+    return JSONResponse({
+        "configured": configured,
+        "has_public_url": has_base_url,
+        "ready": configured and has_base_url,
+    })
+
+
+@app.post("/api/instagram/publish/{preview_id}")
+async def instagram_publish(preview_id: str) -> JSONResponse:
+    """Publish an approved preview to Instagram Reels via the Graph API."""
+    from travel_instagram import instagram_service
+
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", preview_id):
+        raise HTTPException(status_code=400, detail="Invalid preview_id.")
+
+    f = _IG_PREVIEWS_DIR / f"{preview_id}.json"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="Preview not found.")
+
+    preview = json.loads(f.read_text(encoding="utf-8"))
+
+    if preview.get("status") == "published":
+        return JSONResponse({
+            "ok": True,
+            "already_published": True,
+            "ig_media_id": preview.get("ig_media_id"),
+        })
+
+    if not instagram_service.instagram_credentials_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Instagram not configured. Set IG_USER_ID and IG_ACCESS_TOKEN in .env.",
+        )
+
+    base_url = config.PUBLIC_APP_BASE_URL
+    if not base_url:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "PUBLIC_APP_BASE_URL is not set. Meta needs a public HTTPS URL to fetch the video. "
+                "Run ngrok (ngrok http 8000) and set PUBLIC_APP_BASE_URL=https://your-id.ngrok.io in .env."
+            ),
+        )
+
+    video_url = (preview.get("video_url") or "").strip()
+    if not video_url:
+        raise HTTPException(status_code=400, detail="Preview has no video_url.")
+
+    public_video_url = base_url + video_url if video_url.startswith("/") else video_url
+    if not public_video_url.startswith("https://"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Video URL must be HTTPS. Got: {public_video_url}",
+        )
+
+    caption_text = preview.get("formatted_post") or preview.get("caption") or ""
+
+    try:
+        result = await asyncio.to_thread(
+            instagram_service.publish_reel,
+            video_url=public_video_url,
+            caption=caption_text,
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    ig_media_id = result.get("id", "")
+    preview["status"] = "published"
+    preview["ig_media_id"] = ig_media_id
+    preview["published_at"] = datetime.now(timezone.utc).isoformat()
+    f.write_text(json.dumps(preview, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    return JSONResponse({"ok": True, "ig_media_id": ig_media_id, "published_at": preview["published_at"]})
+
+
 @app.get("/instagram-preview/{preview_id}", response_class=HTMLResponse)
 async def instagram_preview_page(preview_id: str, request: Request) -> HTMLResponse:
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", preview_id):

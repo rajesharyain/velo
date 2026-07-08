@@ -15,6 +15,14 @@ load_dotenv()
 GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY")
 PEXELS_API_KEY: str | None = os.getenv("PEXELS_API_KEY")
 
+# Instagram Graph API credentials (required for publishing)
+IG_USER_ID: str | None = os.getenv("IG_USER_ID")
+IG_ACCESS_TOKEN: str | None = os.getenv("IG_ACCESS_TOKEN")
+
+# Public base URL used to build HTTPS video URLs for Meta's servers.
+# Must be set to an externally reachable URL, e.g. https://abc123.ngrok.io
+PUBLIC_APP_BASE_URL: str = (os.getenv("PUBLIC_APP_BASE_URL", "") or "").strip().rstrip("/")
+
 # Groq chat model — fast, JSON-friendly
 GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 
