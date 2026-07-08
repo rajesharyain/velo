@@ -1724,15 +1724,16 @@ async def api_music_auto_track(mood: str = Query(default="travel")) -> JSONRespo
 
     if jamendo_id:
         try:
-            # Map UI mood to Jamendo tags
-            tag_map = {
-                "travel": "travel+cinematic",
-                "cinematic": "cinematic+epic",
-                "upbeat": "upbeat+happy",
-                "relaxed": "relaxing+ambient",
-                "adventure": "adventure+inspiring",
+            # Map mood to Jamendo search terms (instrumental tracks only)
+            search_map = {
+                "travel": "cinematic",
+                "cinematic": "cinematic",
+                "upbeat": "upbeat",
+                "relaxed": "relaxing",
+                "adventure": "adventure",
+                "inspiring": "inspiring",
             }
-            tags = tag_map.get(mood.lower(), mood)
+            search_term = search_map.get(mood.lower(), "cinematic")
 
             async with httpx.AsyncClient(timeout=15) as client:
                 resp = await client.get(
@@ -1741,11 +1742,10 @@ async def api_music_auto_track(mood: str = Query(default="travel")) -> JSONRespo
                         "client_id": jamendo_id,
                         "format": "json",
                         "limit": 20,
-                        "tags": tags,
-                        "fuzzytags": "1",
+                        "search": search_term,
+                        "vocalinstrumental": "instrumental",
                         "audiodlformat": "mp32",
                         "order": "popularity_total",
-                        "include": "musicinfo",
                     },
                 )
                 resp.raise_for_status()
