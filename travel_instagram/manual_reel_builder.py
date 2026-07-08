@@ -658,11 +658,13 @@ def _render_caption_overlay(
             show_branding=show_branding,
         )
 
-    # ── Top gradient scrim (dark → transparent, covers top 38% of frame) ─
-    grad_end_y = int(h * 0.38)
-    for gy in range(0, grad_end_y):
-        progress = 1.0 - (gy / max(1, grad_end_y))
-        alpha = int(210 * (progress ** 0.7))
+    # ── Gradient scrim behind text (covers 25%–58% of frame height) ─────
+    grad_start_y = int(h * 0.25)
+    grad_end_y   = int(h * 0.58)
+    mid_y = (grad_start_y + grad_end_y) // 2
+    for gy in range(grad_start_y, grad_end_y):
+        dist = abs(gy - mid_y)
+        alpha = int(180 * max(0.0, 1.0 - (dist / max(1, mid_y - grad_start_y)) ** 1.2))
         draw.line([(0, gy), (w - 1, gy)], fill=(0, 0, 0, alpha))
 
     # ── Day pill at top-right corner ──────────────────────────────────────
@@ -735,8 +737,8 @@ def _render_caption_overlay(
     if body_lines:
         total_h += (block_gap if (title_lines or sub_lines) else 0) + bh
 
-    # Anchor text block top at 8% of frame height (top-middle zone).
-    cy_line = int(h * 0.08)
+    # Anchor text block top at 35% of frame height.
+    cy_line = int(h * 0.35)
 
     title_stroke = max(2, int(round(font_scale * 1.5)))
     sub_stroke = max(1, int(round(font_scale * 1.1)))
