@@ -134,13 +134,33 @@
     },
     {
       "parameters": {
-        "jsCode": "const captionData = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n}}];\n"
+        "method": "POST",
+        "url": "http://velo:8000/api/youtube/generate-metadata",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": {{ JSON.stringify($json.title || '') }},\n  \"video_summary\": {{ JSON.stringify($json.caption || '') }},\n  \"location\": {{ JSON.stringify($('Pick Best Media Items').item.json.destination || '') }},\n  \"landmarks\": {{ JSON.stringify(($('Pick Best Media Items').item.json.place_names || []).join(', ')) }},\n  \"mood\": {{ JSON.stringify($json.keywords || '') }},\n  \"keywords\": {{ JSON.stringify($json.keywords || '') }}\n}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "generate-yt-metadata",
+      "name": "Generate YouTube Metadata (AI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 260],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const captionData = $('Generate Caption & Hashtags (AI)').first().json;\nconst ytMeta = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n  youtube_title: ytMeta.youtube_title || '',\n  youtube_description: ytMeta.youtube_description || '',\n  youtube_tags: ytMeta.youtube_tags || [],\n  youtube_pinned_comment: ytMeta.youtube_pinned_comment || '',\n  youtube_title_variations: ytMeta.youtube_title_variations || [],\n}}];\n"
       },
       "id": "assemble-preview",
       "name": "Assemble Preview Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2000, 260]
+      "position": [2220, 260]
     },
     {
       "parameters": {
@@ -152,14 +172,14 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"destination\": \"{{ $json.destination }}\",\n  \"video_url\": \"{{ $json.video_url }}\",\n  \"title\": {{ JSON.stringify($json.title) }},\n  \"caption\": {{ JSON.stringify($json.caption) }},\n  \"formatted_post\": {{ JSON.stringify($json.formatted_post) }},\n  \"hashtags\": {{ JSON.stringify($json.hashtags) }},\n  \"keywords\": {{ JSON.stringify($json.keywords) }},\n  \"row_index\": {{ $json.row_index }},\n  \"reel_duration_secs\": {{ $json.reel_duration_secs }}\n}",
+        "jsonBody": "={\n  \"destination\": \"{{ $json.destination }}\",\n  \"video_url\": \"{{ $json.video_url }}\",\n  \"title\": {{ JSON.stringify($json.title) }},\n  \"caption\": {{ JSON.stringify($json.caption) }},\n  \"formatted_post\": {{ JSON.stringify($json.formatted_post) }},\n  \"hashtags\": {{ JSON.stringify($json.hashtags) }},\n  \"keywords\": {{ JSON.stringify($json.keywords) }},\n  \"row_index\": {{ $json.row_index }},\n  \"reel_duration_secs\": {{ $json.reel_duration_secs }},\n  \"youtube_title\": {{ JSON.stringify($json.youtube_title || '') }},\n  \"youtube_description\": {{ JSON.stringify($json.youtube_description || '') }},\n  \"youtube_tags\": {{ JSON.stringify($json.youtube_tags || []) }},\n  \"youtube_pinned_comment\": {{ JSON.stringify($json.youtube_pinned_comment || '') }},\n  \"youtube_title_variations\": {{ JSON.stringify($json.youtube_title_variations || []) }}\n}",
         "options": { "timeout": 15000 }
       },
       "id": "save-preview",
       "name": "Save Preview",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2220, 260]
+      "position": [2440, 260]
     },
     {
       "parameters": {
@@ -178,17 +198,17 @@
       "name": "Mark Done in Excel",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2440, 260]
+      "position": [2660, 260]
     },
     {
       "parameters": {
-        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram + YouTube now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
+        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst assembleData = $('Assemble Preview Data').first().json;\nconst musicSource = assembleData.music_source || 'none';\nconst musicTitle = assembleData.music_title || '';\nconst musicArtist = assembleData.music_artist || '';\nconst ytTitle = assembleData.youtube_title || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nif (ytTitle) {\n  console.log('YT Title    :', ytTitle);\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram + YouTube now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
       },
       "id": "log-preview-url",
       "name": "Preview URL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2660, 260]
+      "position": [2880, 260]
     },
     {
       "parameters": {
@@ -200,7 +220,7 @@
       "name": "Publish to Instagram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2880, 160],
+      "position": [3100, 160],
       "continueOnFail": true
     },
     {
@@ -213,7 +233,7 @@
       "name": "Publish to YouTube Shorts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2880, 360],
+      "position": [3100, 360],
       "continueOnFail": true
     },
     {
@@ -224,7 +244,7 @@
       "name": "Published!",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3100, 260]
+      "position": [3320, 260]
     },
     {
       "parameters": {
@@ -263,6 +283,9 @@
       "main": [[{ "node": "Generate Caption & Hashtags (AI)", "type": "main", "index": 0 }]]
     },
     "Generate Caption & Hashtags (AI)": {
+      "main": [[{ "node": "Generate YouTube Metadata (AI)", "type": "main", "index": 0 }]]
+    },
+    "Generate YouTube Metadata (AI)": {
       "main": [[{ "node": "Assemble Preview Data", "type": "main", "index": 0 }]]
     },
     "Assemble Preview Data": {
