@@ -85,9 +85,10 @@ log "Excel file found ✓"
 ENV_FILE="$VELO_DIR/.env"
 if [[ -f "$ENV_FILE" ]]; then
   if grep -q "^TRAVEL_PRICES_EXCEL_PATH=" "$ENV_FILE"; then
-    # Update existing line
     sed -i '' "s|^TRAVEL_PRICES_EXCEL_PATH=.*|TRAVEL_PRICES_EXCEL_PATH=$EXCEL_PATH|" "$ENV_FILE"
   else
+    # Ensure file ends with a newline before appending
+    [[ -n "$(tail -c1 "$ENV_FILE")" ]] && echo "" >> "$ENV_FILE"
     echo "TRAVEL_PRICES_EXCEL_PATH=$EXCEL_PATH" >> "$ENV_FILE"
   fi
   log ".env updated: TRAVEL_PRICES_EXCEL_PATH=$EXCEL_PATH"
