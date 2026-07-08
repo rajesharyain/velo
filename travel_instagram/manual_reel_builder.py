@@ -696,16 +696,16 @@ def _render_caption_overlay(
     # ── Text fonts ────────────────────────────────────────────────────────
     title_font = _try_overlay_font_stack(
         _TITLE_FONT_STACK,
-        int(h * 0.054 * font_scale),
+        int(h * 0.034 * font_scale),
         system_bold_fallback=True,
     )
     sub_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.028 * font_scale),
+        int(h * 0.020 * font_scale),
     )
     body_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.024 * font_scale),
+        int(h * 0.016 * font_scale),
     )
 
     pad_x = int(w * 0.072)
