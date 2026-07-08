@@ -116,26 +116,6 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "http://velo:8000/api/upload-reel/convert-landscape",
-        "sendBody": true,
-        "contentType": "multipart-form-data",
-        "bodyParameters": {
-          "parameters": [
-            { "name": "video_url", "value": "={{ $json.video_url }}" },
-            { "name": "music_volume", "value": "0.3" }
-          ]
-        },
-        "options": { "timeout": 300000 }
-      },
-      "id": "generate-youtube",
-      "name": "Generate YouTube Version (16:9)",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [1780, 160]
-    },
-    {
-      "parameters": {
-        "method": "POST",
         "url": "http://velo:8000/api/instagram/generate-caption",
         "sendHeaders": true,
         "headerParameters": {
@@ -143,18 +123,18 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"destination\": \"{{ $('Pick Best Media Items').item.json.destination }}\",\n  \"places\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_names || []) }},\n  \"video_url\": \"{{ $('Generate Reel (FFmpeg)').item.json.video_url || '' }}\"\n}",
+        "jsonBody": "={\n  \"destination\": \"{{ $('Pick Best Media Items').item.json.destination }}\",\n  \"places\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_names || []) }},\n  \"video_url\": \"{{ $json.video_url || '' }}\"\n}",
         "options": { "timeout": 60000 }
       },
       "id": "generate-caption",
       "name": "Generate Caption & Hashtags (AI)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1780, 360]
+      "position": [1780, 260]
     },
     {
       "parameters": {
-        "jsCode": "const captionData = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst ytData = $('Generate YouTube Version (16:9)').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  youtube_video_url: ytData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n}}];\n"
+        "jsCode": "const captionData = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n}}];\n"
       },
       "id": "assemble-preview",
       "name": "Assemble Preview Data",
@@ -202,7 +182,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconst ytUrl = $('Generate YouTube Version (16:9)').first().json.video_url || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Instagram Preview:', previewUrl);\nconsole.log('YouTube 16:9     :', 'http://localhost:8000' + ytUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl, youtube_video_url: ytUrl } }];\n"
+        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
       },
       "id": "log-preview-url",
       "name": "Preview URL",
@@ -224,7 +204,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const result = $input.first().json;\nconst previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\nconst ytUrl = $('Preview URL').first().json.youtube_video_url || '';\nconsole.log('\\n🎉 PUBLISHED TO INSTAGRAM!');\nconsole.log('Instagram Preview :', previewUrl);\nconsole.log('YouTube 16:9 file :', ytUrl ? 'http://localhost:8000' + ytUrl : '—');\nconsole.log('IG Media ID       :', result.ig_media_id || '—');\nconsole.log('Published         :', result.published_at || new Date().toISOString());\nreturn [{ json: { status: 'published', preview_id: previewId, preview_url: previewUrl, youtube_video_url: ytUrl, ig_media_id: result.ig_media_id || '', published_at: result.published_at || '' } }];\n"
+        "jsCode": "const result = $input.first().json;\nconst previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\nconsole.log('\\n🎉 PUBLISHED TO INSTAGRAM!');\nconsole.log('Preview URL:', previewUrl);\nconsole.log('IG Media ID:', result.ig_media_id || '—');\nconsole.log('Published  :', result.published_at || new Date().toISOString());\nreturn [{ json: { status: 'published', preview_id: previewId, preview_url: previewUrl, ig_media_id: result.ig_media_id || '', published_at: result.published_at || '' } }];\n"
       },
       "id": "published-log",
       "name": "Published!",
@@ -266,9 +246,6 @@
       "main": [[{ "node": "Generate Reel (FFmpeg)", "type": "main", "index": 0 }]]
     },
     "Generate Reel (FFmpeg)": {
-      "main": [[{ "node": "Generate YouTube Version (16:9)", "type": "main", "index": 0 }]]
-    },
-    "Generate YouTube Version (16:9)": {
       "main": [[{ "node": "Generate Caption & Hashtags (AI)", "type": "main", "index": 0 }]]
     },
     "Generate Caption & Hashtags (AI)": {
