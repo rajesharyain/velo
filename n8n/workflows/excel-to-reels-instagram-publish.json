@@ -152,7 +152,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"destination\": \"{{ $json.destination }}\",\n  \"video_url\": \"{{ $json.video_url }}\",\n  \"title\": {{ JSON.stringify($json.title) }},\n  \"caption\": {{ JSON.stringify($json.caption) }},\n  \"hashtags\": {{ JSON.stringify($json.hashtags) }},\n  \"keywords\": {{ JSON.stringify($json.keywords) }},\n  \"row_index\": {{ $json.row_index }},\n  \"reel_duration_secs\": {{ $json.reel_duration_secs }}\n}",
+        "jsonBody": "={\n  \"destination\": \"{{ $json.destination }}\",\n  \"video_url\": \"{{ $json.video_url }}\",\n  \"title\": {{ JSON.stringify($json.title) }},\n  \"caption\": {{ JSON.stringify($json.caption) }},\n  \"formatted_post\": {{ JSON.stringify($json.formatted_post) }},\n  \"hashtags\": {{ JSON.stringify($json.hashtags) }},\n  \"keywords\": {{ JSON.stringify($json.keywords) }},\n  \"row_index\": {{ $json.row_index }},\n  \"reel_duration_secs\": {{ $json.reel_duration_secs }}\n}",
         "options": { "timeout": 15000 }
       },
       "id": "save-preview",
@@ -200,7 +200,8 @@
       "name": "Publish to Instagram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2880, 160]
+      "position": [2880, 160],
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -212,11 +213,12 @@
       "name": "Publish to YouTube Shorts",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2880, 360]
+      "position": [2880, 360],
+      "continueOnFail": true
     },
     {
       "parameters": {
-        "jsCode": "const igResult = $('Publish to Instagram').first().json;\nconst ytResult = $('Publish to YouTube Shorts').first().json;\nconst previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nconsole.log('\\n🎉 PUBLISHED!');\nconsole.log('Instagram Preview :', previewUrl);\nconsole.log('IG Media ID       :', igResult.ig_media_id || igResult.detail || '—');\nconsole.log('YouTube Shorts URL:', ytResult.youtube_url || ytResult.detail || '—');\nconsole.log('YouTube Video ID  :', ytResult.youtube_video_id || '—');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igResult.ig_media_id || '',\n  youtube_video_id: ytResult.youtube_video_id || '',\n  youtube_url: ytResult.youtube_url || '',\n} }];\n"
+        "jsCode": "const previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nlet igMediaId = '—', igStatus = 'unknown';\nlet ytUrl = '—', ytVideoId = '—', ytStatus = 'unknown';\n\ntry {\n  const igResult = $('Publish to Instagram').first().json;\n  igMediaId = igResult.ig_media_id || igResult.detail || igResult.error?.message || '—';\n  igStatus = igResult.ig_media_id ? 'ok' : 'failed';\n} catch (e) {\n  igStatus = 'error: ' + e.message;\n}\n\ntry {\n  const ytResult = $('Publish to YouTube Shorts').first().json;\n  ytVideoId = ytResult.youtube_video_id || '—';\n  ytUrl = ytResult.youtube_url || ytResult.detail || ytResult.error?.message || '—';\n  ytStatus = ytResult.youtube_video_id ? 'ok' : 'failed';\n} catch (e) {\n  ytStatus = 'error: ' + e.message;\n}\n\nconsole.log('\\n🎉 PUBLISHED!');\nconsole.log('Instagram Preview :', previewUrl);\nconsole.log('IG Media ID       :', igMediaId, '(' + igStatus + ')');\nconsole.log('YouTube Shorts URL:', ytUrl);\nconsole.log('YouTube Video ID  :', ytVideoId, '(' + ytStatus + ')');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igMediaId !== '—' ? igMediaId : '',\n  ig_status: igStatus,\n  youtube_video_id: ytVideoId !== '—' ? ytVideoId : '',\n  youtube_url: ytUrl !== '—' ? ytUrl : '',\n  yt_status: ytStatus,\n} }];\n"
       },
       "id": "published-log",
       "name": "Published!",
