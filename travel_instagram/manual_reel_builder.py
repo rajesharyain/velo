@@ -625,7 +625,9 @@ def _render_caption_overlay(
     hook_mode: bool = False,
     hook_location_hint: str = "",
     show_branding: bool = True,
+    day_label: str = "",
 ) -> Path:
+    """Cinematic bottom-zone overlay: gradient scrim + left-aligned text + optional day pill."""
     w, h = config.REEL_SIZE
     out_png.parent.mkdir(parents=True, exist_ok=True)
     img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
@@ -635,20 +637,9 @@ def _render_caption_overlay(
     body_t = (caption or "").strip()
     sub_t = (caption_text or "").strip()
 
-    anchor_x = max(0.0, min(1.0, float(anchor_x)))
-    anchor_y = max(0.0, min(1.0, float(anchor_y)))
     font_scale = max(0.6, min(1.7, float(font_scale)))
 
-    max_w = int(w * 0.84)
-    line_gap = max(8, int(h * 0.008))
-    # Tighter leading for caption_text (place blurb) under the title
-    sub_line_gap = max(3, int(h * 0.0042))
-    title_body_gap = max(10, int(h * 0.014))
-    title_sub_gap = max(8, int(h * 0.011))
-    pad_x = int(max(30, w * 0.06))
-    pad_y = int(max(20, h * 0.022))
-
-    if not title_t and not body_t and not sub_t:
+    if not title_t and not body_t and not sub_t and not day_label:
         if show_branding:
             _draw_reel_brand_badge(draw, w, h)
         img.save(out_png)
@@ -667,222 +658,131 @@ def _render_caption_overlay(
             show_branding=show_branding,
         )
 
-    # No location title: centered block(s) — optional place blurb + body
-    if not title_t:
-        sub_font = _try_overlay_font_stack(
-            _BODY_FONT_STACK,
-            int(h * 0.0265 * font_scale),
-        )
-        body_font = _try_overlay_font_stack(
-            _BODY_FONT_STACK,
-            int(h * 0.030 * font_scale),
-        )
-        sub_lines = _wrap_words_to_lines(draw, sub_t, sub_font, max_w, 4) if sub_t else []
-        body_lines = _wrap_words_to_lines(draw, body_t, body_font, max_w, 5) if body_t else []
-        if not sub_lines and not body_lines:
-            if show_branding:
-                _draw_reel_brand_badge(draw, w, h)
-            img.save(out_png)
-            return out_png
+    # ── Bottom gradient scrim (transparent → dark, from 52% to bottom) ────
+    grad_start_y = int(h * 0.52)
+    for gy in range(grad_start_y, h):
+        progress = (gy - grad_start_y) / max(1, h - 1 - grad_start_y)
+        alpha = int(210 * (progress ** 0.7))
+        draw.line([(0, gy), (w - 1, gy)], fill=(0, 0, 0, alpha))
 
-        sh = [
-            draw.textbbox((0, 0), ln, font=sub_font)[3] - draw.textbbox((0, 0), ln, font=sub_font)[1]
-            for ln in sub_lines
-        ]
-        bh0 = [
-            draw.textbbox((0, 0), ln, font=body_font)[3] - draw.textbbox((0, 0), ln, font=body_font)[1]
-            for ln in body_lines
-        ]
-        block_h = sum(sh) + max(0, len(sub_lines) - 1) * sub_line_gap
-        if body_lines:
-            block_h += (title_sub_gap if sub_lines else 0) + sum(bh0) + max(0, len(body_lines) - 1) * line_gap
-        block_w = 0
-        for ln in sub_lines:
-            bb = draw.textbbox((0, 0), ln, font=sub_font)
-            block_w = max(block_w, bb[2] - bb[0])
-        for ln in body_lines:
-            bb = draw.textbbox((0, 0), ln, font=body_font)
-            block_w = max(block_w, bb[2] - bb[0])
-        rect_w = min(w - 36, block_w + pad_x * 2)
-        rect_h = block_h + pad_y * 2
-        cx = float(anchor_x) * float(w)
-        cy = float(anchor_y) * float(h)
-        x0 = int(round(cx - rect_w / 2.0))
-        y0 = int(round(cy - rect_h / 2.0))
-        x0 = max(10, min(x0, w - rect_w - 10))
-        y0 = max(10, min(y0, h - rect_h - 10))
-        if CAPTION_OVERLAY_PANEL_RGBA is not None and sub_t:
-            draw.rounded_rectangle(
-                (x0, y0, x0 + rect_w, y0 + rect_h),
-                radius=int(min(34, h * 0.03)),
-                fill=CAPTION_OVERLAY_PANEL_RGBA,
-            )
-        cy_line = y0 + pad_y
-        sub_stroke_strong = max(2, int(round(font_scale * 1.12)))
-        body_stroke0 = max(1, int(round(font_scale * 0.85)))
-        for ln in sub_lines:
-            bb = draw.textbbox((0, 0), ln, font=sub_font)
-            tw = bb[2] - bb[0]
-            tx = int(round((x0 + rect_w / 2.0) - tw / 2.0))
-            _draw_text_with_drop_shadow(
-                draw,
-                (tx, cy_line),
-                ln,
-                sub_font,
-                (248, 250, 255, 255),
-                stroke_w=sub_stroke_strong,
-            )
-            cy_line += (bb[3] - bb[1]) + sub_line_gap
-        if body_lines:
-            if sub_lines:
-                cy_line += title_sub_gap - sub_line_gap
-            for ln in body_lines:
-                bb = draw.textbbox((0, 0), ln, font=body_font)
-                tw = bb[2] - bb[0]
-                tx = int(round((x0 + rect_w / 2.0) - tw / 2.0))
-                draw.text(
-                    (tx, cy_line),
-                    ln,
-                    font=body_font,
-                    fill=(230, 235, 245, 252),
-                    stroke_width=body_stroke0,
-                    stroke_fill=(0, 0, 0, 150),
-                )
-                cy_line += (bb[3] - bb[1]) + line_gap
-        if show_branding:
-            _draw_reel_brand_badge(draw, w, h)
-        img.save(out_png)
-        return out_png
+    # ── Day pill at top-right corner ──────────────────────────────────────
+    if day_label:
+        pill_font = _try_overlay_font_stack(
+            _TITLE_FONT_STACK,
+            int(h * 0.022 * font_scale),
+            system_bold_fallback=True,
+        )
+        pill_pad_x = int(w * 0.038)
+        pill_pad_y = int(h * 0.012)
+        pbb = draw.textbbox((0, 0), day_label, font=pill_font)
+        pill_tw = pbb[2] - pbb[0]
+        pill_th = pbb[3] - pbb[1]
+        pill_w = pill_tw + pill_pad_x * 2
+        pill_h_px = pill_th + pill_pad_y * 2
+        pill_x = w - pill_w - int(w * 0.052)
+        pill_y = int(h * 0.058)
+        draw.rounded_rectangle(
+            (pill_x, pill_y, pill_x + pill_w, pill_y + pill_h_px),
+            radius=pill_h_px // 2,
+            fill=(255, 255, 255, 225),
+        )
+        draw.text(
+            (pill_x + pill_pad_x, pill_y + pill_pad_y),
+            day_label,
+            font=pill_font,
+            fill=(15, 15, 15, 255),
+        )
 
+    # ── Text fonts ────────────────────────────────────────────────────────
     title_font = _try_overlay_font_stack(
         _TITLE_FONT_STACK,
-        int(h * 0.040 * font_scale),
+        int(h * 0.054 * font_scale),
         system_bold_fallback=True,
     )
-    subtitle_font = _try_overlay_font_stack(
+    sub_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.0265 * font_scale),
+        int(h * 0.028 * font_scale),
     )
     body_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.030 * font_scale),
+        int(h * 0.024 * font_scale),
     )
-    # Pin column width from title size; tight gap so the pin sits close to the location name.
-    title_px = int(h * 0.040 * font_scale)
-    r_pin = max(7, min(17, int(title_px * 0.82)))
-    rx_o_pin = int(r_pin * 1.45)
-    pin_col_w = 2 * rx_o_pin + 8
-    pin_gap = 5
-    col_w = max(120, max_w - pin_col_w - pin_gap)
-    title_lines = _wrap_words_to_lines(draw, title_t, title_font, col_w, 2)
-    sub_lines = _wrap_words_to_lines(draw, sub_t, subtitle_font, col_w, 4) if sub_t else []
-    body_lines = _wrap_words_to_lines(draw, body_t, body_font, col_w, 5) if body_t else []
 
-    th = [
-        draw.textbbox((0, 0), ln, font=title_font)[3]
-        - draw.textbbox((0, 0), ln, font=title_font)[1]
-        for ln in title_lines
-    ]
-    sh = [
-        draw.textbbox((0, 0), ln, font=subtitle_font)[3]
-        - draw.textbbox((0, 0), ln, font=subtitle_font)[1]
-        for ln in sub_lines
-    ]
-    bh = [
-        draw.textbbox((0, 0), ln, font=body_font)[3] - draw.textbbox((0, 0), ln, font=body_font)[1]
-        for ln in body_lines
-    ]
-    block_h = sum(th) + max(0, len(title_lines) - 1) * line_gap
+    pad_x = int(w * 0.072)
+    max_text_w = w - pad_x * 2
+    line_gap = max(6, int(h * 0.006))
+    block_gap = max(10, int(h * 0.013))
+
+    title_lines = _wrap_words_to_lines(draw, title_t, title_font, max_text_w, 2) if title_t else []
+    sub_lines = _wrap_words_to_lines(draw, sub_t, sub_font, max_text_w, 3) if sub_t else []
+    body_lines = _wrap_words_to_lines(draw, body_t, body_font, max_text_w, 4) if body_t else []
+
+    def _blk_h(lines: list[str], font: ImageFont.FreeTypeFont | ImageFont.ImageFont, gap: int) -> int:
+        if not lines:
+            return 0
+        hs = [draw.textbbox((0, 0), ln, font=font)[3] - draw.textbbox((0, 0), ln, font=font)[1] for ln in lines]
+        return sum(hs) + max(0, len(lines) - 1) * gap
+
+    th = _blk_h(title_lines, title_font, line_gap)
+    sh = _blk_h(sub_lines, sub_font, line_gap)
+    bh = _blk_h(body_lines, body_font, line_gap)
+
+    total_h = 0
+    if title_lines:
+        total_h += th
     if sub_lines:
-        block_h += title_sub_gap + sum(sh) + max(0, len(sub_lines) - 1) * sub_line_gap
+        total_h += (block_gap if title_lines else 0) + sh
     if body_lines:
-        block_h += title_body_gap + sum(bh) + max(0, len(body_lines) - 1) * line_gap
+        total_h += (block_gap if (title_lines or sub_lines) else 0) + bh
 
-    max_title_tw = 0
+    # Anchor the text block bottom at 91% of frame height (above Instagram UI chrome)
+    text_bottom = int(h * 0.91)
+    cy_line = text_bottom - total_h
+
+    title_stroke = max(2, int(round(font_scale * 1.5)))
+    sub_stroke = max(1, int(round(font_scale * 1.1)))
+    body_stroke = max(1, int(round(font_scale * 0.9)))
+
     for ln in title_lines:
-        bb = draw.textbbox((0, 0), ln, font=title_font)
-        max_title_tw = max(max_title_tw, bb[2] - bb[0])
-    max_sub_tw = 0
-    for ln in sub_lines:
-        bb = draw.textbbox((0, 0), ln, font=subtitle_font)
-        max_sub_tw = max(max_sub_tw, bb[2] - bb[0])
-    max_body_tw = 0
-    for ln in body_lines:
-        bb = draw.textbbox((0, 0), ln, font=body_font)
-        max_body_tw = max(max_body_tw, bb[2] - bb[0])
-    text_block_w = max(max_title_tw, max_sub_tw, max_body_tw)
-    block_w = pin_col_w + pin_gap + text_block_w if title_lines else text_block_w
-
-    rect_w = min(w - 36, block_w + pad_x * 2)
-    rect_h = block_h + pad_y * 2
-    cx = float(anchor_x) * float(w)
-    cy = float(anchor_y) * float(h)
-    x0 = int(round(cx - rect_w / 2.0))
-    y0 = int(round(cy - rect_h / 2.0))
-    x0 = max(10, min(x0, w - rect_w - 10))
-    y0 = max(10, min(y0, h - rect_h - 10))
-
-    if CAPTION_OVERLAY_PANEL_RGBA is not None and sub_lines:
-        draw.rounded_rectangle(
-            (x0, y0, x0 + rect_w, y0 + rect_h),
-            radius=int(min(34, h * 0.03)),
-            fill=CAPTION_OVERLAY_PANEL_RGBA,
-        )
-
-    cy_line = y0 + pad_y
-    inner_left = x0 + pad_x
-    text_x0 = inner_left + pin_col_w + pin_gap
-    pin_cx_title = inner_left + rx_o_pin + 3
-    title_stroke = max(1, int(round(font_scale * 1.05)))
-    sub_stroke_strong = max(2, int(round(font_scale * 1.12)))
-    body_stroke = max(1, int(round(font_scale * 0.85)))
-    for ti, ln in enumerate(title_lines):
-        bb = draw.textbbox((0, 0), ln, font=title_font)
-        line_h = bb[3] - bb[1]
-        if ti == 0:
-            line_center_y = cy_line + line_h // 2
-            _draw_map_pin(draw, pin_cx_title, line_center_y, line_h, frame_h=h)
-        tx = text_x0
         draw.text(
-            (tx, cy_line),
+            (pad_x, cy_line),
             ln,
             font=title_font,
             fill=(255, 255, 255, 255),
             stroke_width=title_stroke,
-            stroke_fill=(0, 0, 0, 170),
+            stroke_fill=(0, 0, 0, 180),
         )
-        cy_line += line_h + line_gap
+        bb = draw.textbbox((0, 0), ln, font=title_font)
+        cy_line += (bb[3] - bb[1]) + line_gap
 
-    if sub_lines:
-        cy_line += title_sub_gap - line_gap
-        for ln in sub_lines:
-            bb = draw.textbbox((0, 0), ln, font=subtitle_font)
-            tx = text_x0
-            _draw_text_with_drop_shadow(
-                draw,
-                (tx, cy_line),
-                ln,
-                subtitle_font,
-                (248, 250, 255, 255),
-                stroke_w=sub_stroke_strong,
-            )
-            cy_line += (bb[3] - bb[1]) + sub_line_gap
+    if title_lines and (sub_lines or body_lines):
+        cy_line += block_gap - line_gap
 
-    if body_lines:
-        gap_trim = sub_line_gap if sub_lines else line_gap
-        cy_line += title_body_gap - gap_trim
+    for ln in sub_lines:
+        _draw_text_with_drop_shadow(
+            draw,
+            (pad_x, cy_line),
+            ln,
+            sub_font,
+            (215, 228, 255, 240),
+            stroke_w=sub_stroke,
+        )
+        bb = draw.textbbox((0, 0), ln, font=sub_font)
+        cy_line += (bb[3] - bb[1]) + line_gap
+
+    if sub_lines and body_lines:
+        cy_line += block_gap - line_gap
 
     for ln in body_lines:
-        bb = draw.textbbox((0, 0), ln, font=body_font)
-        tx = text_x0
         draw.text(
-            (tx, cy_line),
+            (pad_x, cy_line),
             ln,
             font=body_font,
-            fill=(230, 235, 245, 252),
+            fill=(195, 212, 240, 225),
             stroke_width=body_stroke,
-            stroke_fill=(0, 0, 0, 150),
+            stroke_fill=(0, 0, 0, 140),
         )
+        bb = draw.textbbox((0, 0), ln, font=body_font)
         cy_line += (bb[3] - bb[1]) + line_gap
 
     if show_branding:
@@ -1137,6 +1037,7 @@ def build_manual_reel(
             anchor_y=anchor[1],
             font_scale=fs,
             show_branding=show_branding,
+            day_label=f"DAY {i + 1}" if tit_i else "",
         )
         prev_overlay_title = tit_i
         prev_caption_text = sub_i
