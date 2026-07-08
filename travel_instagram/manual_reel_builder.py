@@ -658,7 +658,12 @@ def _render_caption_overlay(
             show_branding=show_branding,
         )
 
-    # Gradient scrim drawn later, after we know text height (placed behind text block)
+    # ── Top gradient scrim (dark → transparent, covers top 38% of frame) ─
+    grad_end_y = int(h * 0.38)
+    for gy in range(0, grad_end_y):
+        progress = 1.0 - (gy / max(1, grad_end_y))
+        alpha = int(210 * (progress ** 0.7))
+        draw.line([(0, gy), (w - 1, gy)], fill=(0, 0, 0, alpha))
 
     # ── Day pill at top-right corner ──────────────────────────────────────
     if day_label:
@@ -688,19 +693,19 @@ def _render_caption_overlay(
             fill=(15, 15, 15, 255),
         )
 
-    # ── Text fonts (reduced ~33% from original for mobile readability) ───
+    # ── Text fonts ────────────────────────────────────────────────────────
     title_font = _try_overlay_font_stack(
         _TITLE_FONT_STACK,
-        int(h * 0.036 * font_scale),
+        int(h * 0.054 * font_scale),
         system_bold_fallback=True,
     )
     sub_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.022 * font_scale),
+        int(h * 0.028 * font_scale),
     )
     body_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.019 * font_scale),
+        int(h * 0.024 * font_scale),
     )
 
     pad_x = int(w * 0.072)
@@ -730,24 +735,8 @@ def _render_caption_overlay(
     if body_lines:
         total_h += (block_gap if (title_lines or sub_lines) else 0) + bh
 
-    # Center text block at anchor_y (default 38% from top — clears YouTube/IG bottom UI).
-    # Clamp so the block never runs off the top or bottom safe margins.
-    safe_top_px = int(h * 0.08)
-    safe_bot_px = int(h * 0.30)
-    center_y = int(h * max(0.1, min(0.75, float(anchor_y))))
-    cy_line = center_y - total_h // 2
-    cy_line = max(safe_top_px, min(cy_line, h - safe_bot_px - total_h))
-
-    # Draw a soft gradient scrim behind the text block for readability.
-    scrim_pad_y = int(h * 0.04)
-    scrim_top = max(0, cy_line - scrim_pad_y)
-    scrim_bot = min(h, cy_line + total_h + scrim_pad_y)
-    for gy in range(scrim_top, scrim_bot):
-        dist_top = gy - scrim_top
-        dist_bot = scrim_bot - gy
-        edge = min(dist_top, dist_bot, scrim_pad_y)
-        alpha = int(160 * (1.0 - (scrim_pad_y - edge) / max(1, scrim_pad_y)) ** 0.5)
-        draw.line([(0, gy), (w - 1, gy)], fill=(0, 0, 0, max(0, min(160, alpha))))
+    # Anchor text block top at 8% of frame height (top-middle zone).
+    cy_line = int(h * 0.08)
 
     title_stroke = max(2, int(round(font_scale * 1.5)))
     sub_stroke = max(1, int(round(font_scale * 1.1)))
