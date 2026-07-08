@@ -66,11 +66,12 @@ CAROUSEL_CLOSING_TEXT: str = (
     )
     or "Explore more\nvisit budgetwing.com\nfor cheap flights."
 ).strip()
-# Legacy: small upward nudge when a slide has primary text only (0 = off)
-CAROUSEL_TEXT_BIAS_UP_RATIO: float = float(os.getenv("CAROUSEL_TEXT_BIAS_UP_RATIO", "0"))
+# Upward nudge so text clears YouTube Shorts / Instagram bottom UI (0.08 = 8% of height)
+CAROUSEL_TEXT_BIAS_UP_RATIO: float = float(os.getenv("CAROUSEL_TEXT_BIAS_UP_RATIO", "0.08"))
 # Reels / IG UI safe zones on carousel JPEGs (ratios of slide height, 0–0.35)
 REEL_TEXT_SAFE_TOP_RATIO: float = float(os.getenv("REEL_TEXT_SAFE_TOP_RATIO", "0.055"))
-REEL_TEXT_SAFE_BOTTOM_RATIO: float = float(os.getenv("REEL_TEXT_SAFE_BOTTOM_RATIO", "0.20"))
+# 0.32 = keep text above bottom 32%, clearing YouTube Shorts & Instagram action-button overlay
+REEL_TEXT_SAFE_BOTTOM_RATIO: float = float(os.getenv("REEL_TEXT_SAFE_BOTTOM_RATIO", "0.32"))
 # Primary (“subject”) is vertically centered between top safe area and this y-ratio
 REEL_PRIMARY_ZONE_END_RATIO: float = float(os.getenv("REEL_PRIMARY_ZONE_END_RATIO", "0.44"))
 # Captions start in this lower band (middle-lower, not flush to bottom)
@@ -117,9 +118,9 @@ REEL_XFADE_SEGMENT_RATIO = float(os.getenv("REEL_XFADE_SEGMENT_RATIO", "0.34"))
 INSTAPOST_REEL_MIN_SECONDS = float(os.getenv("INSTAPOST_REEL_MIN_SECONDS", "22"))
 INSTAPOST_REEL_MAX_SECONDS = float(os.getenv("INSTAPOST_REEL_MAX_SECONDS", "52"))
 
-# Carousel slide text: larger type + semi-transparent panel behind the text block
-CAROUSEL_TITLE_FONT_SCALE = float(os.getenv("CAROUSEL_TITLE_FONT_SCALE", "1.14"))
-CAROUSEL_BODY_FONT_SCALE = float(os.getenv("CAROUSEL_BODY_FONT_SCALE", "1.10"))
+# Carousel slide text: font scale and panel alpha
+CAROUSEL_TITLE_FONT_SCALE = float(os.getenv("CAROUSEL_TITLE_FONT_SCALE", "0.88"))
+CAROUSEL_BODY_FONT_SCALE = float(os.getenv("CAROUSEL_BODY_FONT_SCALE", "0.85"))
 CAROUSEL_TEXT_PANEL_ALPHA = int(max(0, min(255, int(os.getenv("CAROUSEL_TEXT_PANEL_ALPHA", "218")))))
 
 
