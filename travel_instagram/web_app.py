@@ -1706,6 +1706,90 @@ async def api_music_tracks() -> JSONResponse:
     return JSONResponse(content={"tracks": config.list_music_tracks()})
 
 
+@app.get("/api/music/auto-track")
+async def api_music_auto_track(mood: str = Query(default="travel")) -> JSONResponse:
+    """
+    Return a music track_id for use in reel generation.
+
+    Priority:
+      1. Jamendo API (if JAMENDO_CLIENT_ID is set) — fetches a popular
+         royalty-free track matching ``mood``, caches the MP3 under music/jamendo/.
+      2. Local music/ folder — picks a random file.
+      3. No music (returns track_id=null).
+    """
+    import random
+
+    jamendo_id = config.JAMENDO_CLIENT_ID
+    jamendo_cache_dir = config.MUSIC_LIBRARY_DIR / "jamendo"
+
+    if jamendo_id:
+        try:
+            # Map UI mood to Jamendo tags
+            tag_map = {
+                "travel": "travel+cinematic",
+                "cinematic": "cinematic+epic",
+                "upbeat": "upbeat+happy",
+                "relaxed": "relaxing+ambient",
+                "adventure": "adventure+inspiring",
+            }
+            tags = tag_map.get(mood.lower(), mood)
+
+            async with httpx.AsyncClient(timeout=15) as client:
+                resp = await client.get(
+                    "https://api.jamendo.com/v3.0/tracks/",
+                    params={
+                        "client_id": jamendo_id,
+                        "format": "json",
+                        "limit": 20,
+                        "tags": tags,
+                        "fuzzytags": "1",
+                        "audiodlformat": "mp32",
+                        "order": "popularity_total",
+                        "include": "musicinfo",
+                    },
+                )
+                resp.raise_for_status()
+                data = resp.json()
+
+            results = data.get("results") or []
+            if results:
+                track = random.choice(results[:10])  # pick from top-10 most popular
+                dl_url = track.get("audiodownload") or track.get("audio")
+                track_id_str = str(track.get("id", ""))
+                title = track.get("name", "")
+                artist = track.get("artist_name", "")
+
+                if dl_url and track_id_str:
+                    jamendo_cache_dir.mkdir(parents=True, exist_ok=True)
+                    local_path = jamendo_cache_dir / f"{track_id_str}.mp3"
+
+                    if not local_path.exists():
+                        async with httpx.AsyncClient(timeout=60, follow_redirects=True) as dl:
+                            audio = await dl.get(dl_url)
+                            audio.raise_for_status()
+                            local_path.write_bytes(audio.content)
+
+                    rel_id = local_path.relative_to(config.MUSIC_LIBRARY_DIR).as_posix()
+                    return JSONResponse({
+                        "source": "jamendo",
+                        "track_id": rel_id,
+                        "title": title,
+                        "artist": artist,
+                        "jamendo_id": track_id_str,
+                    })
+        except Exception as exc:
+            logger.warning("Jamendo fetch failed: %s — falling back to local music", exc)
+
+    # Fallback: random local track
+    tracks = config.list_music_tracks()
+    if tracks:
+        import random as _r
+        t = _r.choice(tracks)
+        return JSONResponse({"source": "local", "track_id": t["id"], "title": t["label"]})
+
+    return JSONResponse({"source": "none", "track_id": None, "title": ""})
+
+
 @app.get("/api/health")
 async def health(debug: bool = Query(default=False)) -> dict[str, Any]:
     """Use ``?debug=1`` to see which ``web_app.py`` is loaded and whether ``/ad-reels`` is registered."""

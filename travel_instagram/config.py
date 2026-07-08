@@ -29,6 +29,10 @@ GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 # Optional reel soundtrack (used when no track is chosen in the UI / CLI)
 REEL_MUSIC_PATH: str | None = os.getenv("REEL_MUSIC_PATH")
 
+# Jamendo API client ID — enables auto-fetching royalty-free music for reels
+# Free signup at https://devportal.jamendo.com/
+JAMENDO_CLIENT_ID: str | None = os.getenv("JAMENDO_CLIENT_ID")
+
 # MCP reel generator: Excel with destination/origin/prices
 TRAVEL_PRICES_EXCEL_PATH: str | None = os.getenv("TRAVEL_PRICES_EXCEL_PATH")
 

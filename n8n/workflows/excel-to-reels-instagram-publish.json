@@ -78,17 +78,33 @@
     },
     {
       "parameters": {
+        "method": "GET",
+        "url": "http://velo:8000/api/music/auto-track",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [{ "name": "mood", "value": "travel" }]
+        },
+        "options": { "timeout": 30000 }
+      },
+      "id": "fetch-music",
+      "name": "Fetch Music Track (Jamendo)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 260]
+    },
+    {
+      "parameters": {
         "method": "POST",
         "url": "http://velo:8000/api/upload-reel/generate",
         "sendBody": true,
         "contentType": "multipart-form-data",
         "bodyParameters": {
           "parameters": [
-            { "name": "items_json", "value": "={{ JSON.stringify($json.picked_items) }}" },
+            { "name": "items_json", "value": "={{ JSON.stringify($('Pick Best Media Items').item.json.picked_items) }}" },
             { "name": "transition_type", "value": "slideleft" },
-            { "name": "clip_seconds_image", "value": "={{ $json.clip_seconds_image }}" },
-            { "name": "clip_seconds_video", "value": "={{ $json.clip_seconds_video }}" },
-            { "name": "music_track_id", "value": "" },
+            { "name": "clip_seconds_image", "value": "={{ $('Pick Best Media Items').item.json.clip_seconds_image }}" },
+            { "name": "clip_seconds_video", "value": "={{ $('Pick Best Media Items').item.json.clip_seconds_video }}" },
+            { "name": "music_track_id", "value": "={{ $json.track_id || '' }}" },
             { "name": "show_branding", "value": "0" }
           ]
         },
@@ -98,7 +114,7 @@
       "name": "Generate Reel (FFmpeg)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1340, 260]
+      "position": [1560, 260]
     },
     {
       "parameters": {
@@ -117,17 +133,17 @@
       "name": "Generate Caption & Hashtags (AI)",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1560, 260]
+      "position": [1780, 260]
     },
     {
       "parameters": {
-        "jsCode": "const captionData = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n}}];\n"
+        "jsCode": "const captionData = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n}}];\n"
       },
       "id": "assemble-preview",
       "name": "Assemble Preview Data",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [1780, 260]
+      "position": [2000, 260]
     },
     {
       "parameters": {
@@ -146,17 +162,17 @@
       "name": "Save Preview",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2000, 260]
+      "position": [2220, 260]
     },
     {
       "parameters": {
-        "jsCode": "const previewId = $input.first().json.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nconsole.log('Preview ID  :', previewId);\nconsole.log('Publishing to Instagram now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
+        "jsCode": "const previewId = $input.first().json.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nconsole.log('Preview ID  :', previewId);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n} else {\n  console.log('Music       : none (silent reel)');\n}\nconsole.log('Publishing to Instagram now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
       },
       "id": "log-preview-url",
       "name": "Preview URL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2220, 260]
+      "position": [2440, 260]
     },
     {
       "parameters": {
@@ -168,7 +184,7 @@
       "name": "Publish to Instagram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2440, 260]
+      "position": [2660, 260]
     },
     {
       "parameters": {
@@ -178,7 +194,7 @@
       "name": "Published!",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2660, 260]
+      "position": [2880, 260]
     },
     {
       "parameters": {
@@ -208,6 +224,9 @@
       "main": [[{ "node": "Pick Best Media Items", "type": "main", "index": 0 }]]
     },
     "Pick Best Media Items": {
+      "main": [[{ "node": "Fetch Music Track (Jamendo)", "type": "main", "index": 0 }]]
+    },
+    "Fetch Music Track (Jamendo)": {
       "main": [[{ "node": "Generate Reel (FFmpeg)", "type": "main", "index": 0 }]]
     },
     "Generate Reel (FFmpeg)": {
