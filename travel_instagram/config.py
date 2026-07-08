@@ -33,6 +33,14 @@ REEL_MUSIC_PATH: str | None = os.getenv("REEL_MUSIC_PATH")
 # Free signup at https://devportal.jamendo.com/
 JAMENDO_CLIENT_ID: str | None = os.getenv("JAMENDO_CLIENT_ID")
 
+# YouTube Data API v3 — publish reels as YouTube Shorts
+# 1. Google Cloud Console → Enable YouTube Data API v3
+# 2. Create OAuth 2.0 Client ID (Desktop app)
+# 3. Run: python scripts/youtube_auth.py  to get the refresh token
+YOUTUBE_CLIENT_ID: str | None = os.getenv("YOUTUBE_CLIENT_ID")
+YOUTUBE_CLIENT_SECRET: str | None = os.getenv("YOUTUBE_CLIENT_SECRET")
+YOUTUBE_REFRESH_TOKEN: str | None = os.getenv("YOUTUBE_REFRESH_TOKEN")
+
 # MCP reel generator: Excel with destination/origin/prices
 TRAVEL_PRICES_EXCEL_PATH: str | None = os.getenv("TRAVEL_PRICES_EXCEL_PATH")
 

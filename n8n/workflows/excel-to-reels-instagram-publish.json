@@ -182,7 +182,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
+        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram + YouTube now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
       },
       "id": "log-preview-url",
       "name": "Preview URL",
@@ -200,11 +200,23 @@
       "name": "Publish to Instagram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2880, 260]
+      "position": [2880, 160]
     },
     {
       "parameters": {
-        "jsCode": "const result = $input.first().json;\nconst previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\nconsole.log('\\n🎉 PUBLISHED TO INSTAGRAM!');\nconsole.log('Preview URL:', previewUrl);\nconsole.log('IG Media ID:', result.ig_media_id || '—');\nconsole.log('Published  :', result.published_at || new Date().toISOString());\nreturn [{ json: { status: 'published', preview_id: previewId, preview_url: previewUrl, ig_media_id: result.ig_media_id || '', published_at: result.published_at || '' } }];\n"
+        "method": "POST",
+        "url": "=http://velo:8000/api/youtube/publish/{{ $('Preview URL').item.json.preview_id }}",
+        "options": { "timeout": 600000 }
+      },
+      "id": "publish-youtube",
+      "name": "Publish to YouTube Shorts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 360]
+    },
+    {
+      "parameters": {
+        "jsCode": "const igResult = $('Publish to Instagram').first().json;\nconst ytResult = $('Publish to YouTube Shorts').first().json;\nconst previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nconsole.log('\\n🎉 PUBLISHED!');\nconsole.log('Instagram Preview :', previewUrl);\nconsole.log('IG Media ID       :', igResult.ig_media_id || igResult.detail || '—');\nconsole.log('YouTube Shorts URL:', ytResult.youtube_url || ytResult.detail || '—');\nconsole.log('YouTube Video ID  :', ytResult.youtube_video_id || '—');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igResult.ig_media_id || '',\n  youtube_video_id: ytResult.youtube_video_id || '',\n  youtube_url: ytResult.youtube_url || '',\n} }];\n"
       },
       "id": "published-log",
       "name": "Published!",
@@ -261,10 +273,16 @@
       "main": [[{ "node": "Preview URL", "type": "main", "index": 0 }]]
     },
     "Preview URL": {
-      "main": [[{ "node": "Publish to Instagram", "type": "main", "index": 0 }]]
+      "main": [[
+        { "node": "Publish to Instagram", "type": "main", "index": 0 },
+        { "node": "Publish to YouTube Shorts", "type": "main", "index": 0 }
+      ]]
     },
     "Publish to Instagram": {
       "main": [[{ "node": "Published!", "type": "main", "index": 0 }]]
+    },
+    "Publish to YouTube Shorts": {
+      "main": [[{ "node": "Published!", "type": "main", "index": 1 }]]
     }
   },
   "settings": {},

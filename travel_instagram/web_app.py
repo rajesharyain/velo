@@ -935,6 +935,75 @@ async def instagram_publish(preview_id: str) -> JSONResponse:
     return JSONResponse({"ok": True, "ig_media_id": ig_media_id, "published_at": preview["published_at"]})
 
 
+@app.post("/api/youtube/publish/{preview_id}")
+async def youtube_publish(preview_id: str) -> JSONResponse:
+    """Publish a saved preview as a YouTube Short."""
+    from travel_instagram import youtube_service
+
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", preview_id):
+        raise HTTPException(status_code=400, detail="Invalid preview_id.")
+
+    f = _IG_PREVIEWS_DIR / f"{preview_id}.json"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="Preview not found.")
+
+    preview = json.loads(f.read_text(encoding="utf-8"))
+
+    if preview.get("youtube_video_id"):
+        return JSONResponse({
+            "ok": True,
+            "already_published": True,
+            "youtube_video_id": preview["youtube_video_id"],
+            "youtube_url": preview.get("youtube_url", ""),
+        })
+
+    if not youtube_service.youtube_credentials_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="YouTube not configured. Set YOUTUBE_CLIENT_ID, YOUTUBE_CLIENT_SECRET, YOUTUBE_REFRESH_TOKEN in .env. Run scripts/youtube_auth.py to get the refresh token.",
+        )
+
+    video_url = (preview.get("video_url") or "").strip()
+    if not video_url:
+        raise HTTPException(status_code=400, detail="Preview has no video_url.")
+
+    # Resolve /media/... URL to actual file path
+    rel = video_url.lstrip("/")
+    if rel.startswith("media/"):
+        rel = rel[len("media/"):]
+    video_path = config.OUTPUT_DIR / rel
+    if not video_path.is_file():
+        raise HTTPException(status_code=404, detail=f"Video file not found at {video_path}")
+
+    title = preview.get("title") or preview.get("destination") or "Travel Reel"
+    description = preview.get("formatted_post") or preview.get("caption") or ""
+    hashtags = preview.get("hashtags") or []
+
+    try:
+        result = await asyncio.to_thread(
+            youtube_service.publish_short,
+            video_path=video_path,
+            title=title,
+            description=description,
+            tags=hashtags,
+            privacy="public",
+        )
+    except (RuntimeError, ValueError) as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    preview["youtube_video_id"] = result.get("youtube_video_id", "")
+    preview["youtube_url"] = result.get("youtube_url", "")
+    preview["youtube_published_at"] = datetime.now(timezone.utc).isoformat()
+    f.write_text(json.dumps(preview, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    return JSONResponse({
+        "ok": True,
+        "youtube_video_id": result.get("youtube_video_id", ""),
+        "youtube_url": result.get("youtube_url", ""),
+        "title": result.get("title", ""),
+    })
+
+
 @app.get("/instagram-preview/{preview_id}", response_class=HTMLResponse)
 async def instagram_preview_page(preview_id: str, request: Request) -> HTMLResponse:
     if not re.fullmatch(r"[A-Za-z0-9_\-]+", preview_id):
