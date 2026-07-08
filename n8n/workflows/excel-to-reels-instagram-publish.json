@@ -166,13 +166,32 @@
     },
     {
       "parameters": {
-        "jsCode": "const previewId = $input.first().json.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nconsole.log('Preview ID  :', previewId);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n} else {\n  console.log('Music       : none (silent reel)');\n}\nconsole.log('Publishing to Instagram now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
+        "method": "POST",
+        "url": "http://velo:8000/api/excel-reels/mark-done",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"row_index\": {{ $('Assemble Preview Data').item.json.row_index }},\n  \"video_url\": \"{{ $('Assemble Preview Data').item.json.video_url }}\",\n  \"status\": \"done\"\n}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "mark-done",
+      "name": "Mark Done in Excel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2440, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\nconst musicSource = musicData.source || 'none';\nconst musicTitle = musicData.title || '';\nconst musicArtist = musicData.artist || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nconsole.log('Preview ID  :', previewId);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n} else {\n  console.log('Music       : none (silent reel)');\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
       },
       "id": "log-preview-url",
       "name": "Preview URL",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2440, 260]
+      "position": [2660, 260]
     },
     {
       "parameters": {
@@ -184,7 +203,7 @@
       "name": "Publish to Instagram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2660, 260]
+      "position": [2880, 260]
     },
     {
       "parameters": {
@@ -194,7 +213,7 @@
       "name": "Published!",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [2880, 260]
+      "position": [3100, 260]
     },
     {
       "parameters": {
@@ -239,6 +258,9 @@
       "main": [[{ "node": "Save Preview", "type": "main", "index": 0 }]]
     },
     "Save Preview": {
+      "main": [[{ "node": "Mark Done in Excel", "type": "main", "index": 0 }]]
+    },
+    "Mark Done in Excel": {
       "main": [[{ "node": "Preview URL", "type": "main", "index": 0 }]]
     },
     "Preview URL": {
