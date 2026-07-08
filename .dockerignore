@@ -1,0 +1,12 @@
+.venv
+.env
+output
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+.git
+.gitignore
+*.md
+n8n
+music

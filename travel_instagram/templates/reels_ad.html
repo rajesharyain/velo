@@ -883,6 +883,19 @@
 
         __adReelsSnapshot = data;
         renderMedia(data);
+
+        // Auto-select first N per place when launched from Excel workflow (?auto=1&pick=N)
+        const _autoP = new URLSearchParams(location.search);
+        if (_autoP.get("auto") === "1") {
+          const _pickN = Math.max(1, parseInt(_autoP.get("pick") || "2", 10) || 2);
+          document.querySelectorAll("#mediaMount .place-block").forEach((block) => {
+            [...block.querySelectorAll(".adPick")].forEach((cb, idx) => {
+              cb.checked = idx < _pickN;
+            });
+          });
+          setTimeout(() => adReelToolbar.scrollIntoView({ behavior: "smooth", block: "start" }), 400);
+        }
+
         renderStructure(data);
         renderPlan(data);
         jsonPre.textContent = JSON.stringify(data, null, 2);
@@ -896,6 +909,23 @@
         runBtn.disabled = false;
       }
     });
+
+    // ── URL-param auto-fill (Excel → Reels workflow) ───────────────────────────
+    (function initFromUrlParams() {
+      const p = new URLSearchParams(location.search);
+      if (p.has("session")) return; // saved-session loading takes priority
+      const q = p.get("query") || p.get("q") || "";
+      if (!q) return;
+      qInput.value = q;
+      if (p.get("tags")) tagsInput.value = p.get("tags");
+      const orient = p.get("orient") || p.get("orientation") || "";
+      if (orient) orientSel.value = orient;
+      if (p.get("hook") && adHookCaption) adHookCaption.value = p.get("hook");
+      if (p.get("auto") === "1") {
+        // Small delay so music tracks finish loading before fetch starts
+        setTimeout(() => runBtn.click(), 700);
+      }
+    })();
 
     (async function bootSavedSession() {
       const sid = new URLSearchParams(location.search).get("session");

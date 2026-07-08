@@ -1,0 +1,256 @@
+{
+  "name": "Excel → Reels (Velo Auto)",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 340]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://velo:8000/api/excel-reels/next-pending",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "get-next-pending",
+      "name": "Get Next Pending Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 340]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-pending",
+              "leftValue": "={{ $json.destination }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-pending",
+      "name": "Has Pending Row?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 340]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://velo:8000/api/ad-reels/travel-media",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $('Get Next Pending Row').item.json.destination }}\",\n  \"tags\": {{ $('Get Next Pending Row').item.json.tags ? JSON.stringify($('Get Next Pending Row').item.json.tags.split(',').map(t => t.trim()).filter(Boolean)) : '[]' }},\n  \"orientation\": {{ $('Get Next Pending Row').item.json.orientation ? '\"' + $('Get Next Pending Row').item.json.orientation + '\"' : 'null' }},\n  \"download\": false\n}",
+        "options": {
+          "timeout": 180000
+        }
+      },
+      "id": "fetch-media",
+      "name": "Fetch Travel Media (Groq + Pexels)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "// ── Pick best media items across all places ──────────────────────────────\n// Target: 5-6 clips total for an 18-22 second reel\n// Strategy: prefer 1 video per place (better motion), then fill with images\n\nconst data = $input.first().json;\nconst places = data.places || [];\n\nconst pendingData = $('Get Next Pending Row').first().json;\nconst TARGET_ITEMS = 6;\nconst TARGET_DURATION_SECS = 20; // aim for 18-22s\n\nconst picked = [];\n\n// Pass 1: one video per place\nfor (const place of places) {\n  if (picked.length >= TARGET_ITEMS) break;\n  const media = place.media || [];\n  const video = media.find(m => m.type === 'video' && m.url);\n  if (video) {\n    picked.push({\n      source: 'url',\n      url: video.url,\n      media_type: 'video',\n      title: place.name,\n      caption_text: place.caption_text || '',\n    });\n  }\n}\n\n// Pass 2: fill remaining slots with images (best-ranked first)\nfor (const place of places) {\n  if (picked.length >= TARGET_ITEMS) break;\n  const media = place.media || [];\n  const alreadyPickedUrls = new Set(picked.map(p => p.url));\n  for (const item of media) {\n    if (picked.length >= TARGET_ITEMS) break;\n    if (item.type === 'image' && item.url && !alreadyPickedUrls.has(item.url)) {\n      picked.push({\n        source: 'url',\n        url: item.url,\n        media_type: 'image',\n        title: place.name,\n        caption_text: place.caption_text || '',\n      });\n      alreadyPickedUrls.add(item.url);\n    }\n  }\n}\n\nif (picked.length === 0) {\n  throw new Error('No media items found in travel-media response');\n}\n\n// Calculate clip durations to hit ~20s total\nconst videoCount = picked.filter(p => p.media_type === 'video').length;\nconst imageCount = picked.filter(p => p.media_type === 'image').length;\nlet totalEstimated = videoCount * 5 + imageCount * 3;\nlet clipVideo = 5;\nlet clipImage = 3;\nif (totalEstimated < 18) {\n  const scale = TARGET_DURATION_SECS / Math.max(totalEstimated, 1);\n  clipVideo = Math.round(5 * scale * 10) / 10;\n  clipImage = Math.round(3 * scale * 10) / 10;\n} else if (totalEstimated > 22) {\n  const scale = TARGET_DURATION_SECS / totalEstimated;\n  clipVideo = Math.round(5 * scale * 10) / 10;\n  clipImage = Math.round(3 * scale * 10) / 10;\n}\n\nreturn [{\n  json: {\n    picked_items: picked,\n    clip_seconds_video: String(clipVideo),\n    clip_seconds_image: String(clipImage),\n    total_items: picked.length,\n    estimated_duration_secs: videoCount * clipVideo + imageCount * clipImage,\n    row_index: pendingData.row_index,\n    destination: pendingData.destination,\n  }\n}];\n"
+      },
+      "id": "pick-media",
+      "name": "Pick Best Media Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://velo:8000/api/upload-reel/generate",
+        "sendHeaders": false,
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "items_json",
+              "value": "={{ JSON.stringify($json.picked_items) }}"
+            },
+            {
+              "name": "transition_type",
+              "value": "slideleft"
+            },
+            {
+              "name": "clip_seconds_image",
+              "value": "={{ $json.clip_seconds_image }}"
+            },
+            {
+              "name": "clip_seconds_video",
+              "value": "={{ $json.clip_seconds_video }}"
+            },
+            {
+              "name": "music_track_id",
+              "value": ""
+            },
+            {
+              "name": "show_branding",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "generate-reel",
+      "name": "Generate Reel (FFmpeg)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 240]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://velo:8000/api/excel-reels/mark-done",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"row_index\": {{ $('Pick Best Media Items').item.json.row_index }},\n  \"video_url\": \"{{ $json.video_url || $json.output_path || '' }}\",\n  \"status\": \"done\"\n}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "mark-done",
+      "name": "Mark Row Done in Excel",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 240]
+    },
+    {
+      "parameters": {
+        "jsCode": "const dest = $('Get Next Pending Row').first().json.destination || 'unknown';\nconsole.log(`No pending rows in reels-queue.xlsx. All done or queue is empty.`);\nreturn [{ json: { status: 'no_pending', message: 'Queue is empty — nothing to process.', destination: dest } }];\n"
+      },
+      "id": "no-pending",
+      "name": "Queue Empty (No-op)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 460]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Next Pending Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Next Pending Row": {
+      "main": [
+        [
+          {
+            "node": "Has Pending Row?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Pending Row?": {
+      "main": [
+        [
+          {
+            "node": "Fetch Travel Media (Groq + Pexels)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Queue Empty (No-op)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Travel Media (Groq + Pexels)": {
+      "main": [
+        [
+          {
+            "node": "Pick Best Media Items",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pick Best Media Items": {
+      "main": [
+        [
+          {
+            "node": "Generate Reel (FFmpeg)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Reel (FFmpeg)": {
+      "main": [
+        [
+          {
+            "node": "Mark Row Done in Excel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {}
+}

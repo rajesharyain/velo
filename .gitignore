@@ -11,3 +11,4 @@ travel_instagram/fonts/*.ttf
 *.mp4
 *.log
 .DS_Store
+.gstack/

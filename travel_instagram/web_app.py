@@ -201,6 +201,15 @@ class AdReelsLibrarySaveBody(BaseModel):
     cache_hits: int = 0
 
 
+class ExcelReelRowRequest(BaseModel):
+    model_config = {"extra": "ignore"}
+    destination: str = Field(..., min_length=1, max_length=2000)
+    tags: str = Field(default="", max_length=500)
+    orientation: str = Field(default="portrait", max_length=32)
+    hook: str = Field(default="", max_length=500)
+    pick: int = Field(default=2, ge=1, le=10)
+
+
 _AD_REELS_LIB_MAX_FILES = 40
 _SESSION_ID_SAFE = re.compile(r"^[a-zA-Z0-9._-]+$")
 
@@ -546,6 +555,481 @@ async def ad_reels_library_page(request: Request) -> HTMLResponse:
             "nav_active": "ad_reels_library",
         },
     )
+
+
+_REELS_QUEUE_FILE = config.OUTPUT_DIR / "reels-queue.xlsx"
+_QUEUE_COL_ALIASES: dict[str, list[str]] = {
+    "destination": ["destination", "place", "query", "prompt", "location", "topic"],
+    "status": ["status", "state"],
+    "tags": ["tags", "extra_tags", "keywords"],
+    "orientation": ["orientation", "orient"],
+    "hook": ["hook", "hook_caption", "opening"],
+    "pick": ["pick", "pick_per_place", "images_per_place"],
+    "video_url": ["video_url", "url", "reel_url", "output"],
+    "processed_at": ["processed_at", "done_at", "completed_at"],
+}
+
+
+def _queue_col_map(header: list[str]) -> dict[str, int]:
+    idx: dict[str, int] = {}
+    for key, aliases in _QUEUE_COL_ALIASES.items():
+        for alias in aliases:
+            if alias in header:
+                idx[key] = header.index(alias)
+                break
+    return idx
+
+
+@app.get("/api/excel-reels/next-pending")
+async def excel_reels_next_pending() -> JSONResponse:
+    """Return the first row in output/reels-queue.xlsx with status == 'pending'."""
+    from openpyxl import load_workbook as _lw
+    if not _REELS_QUEUE_FILE.exists():
+        return JSONResponse({"pending": False, "message": "reels-queue.xlsx not found in output/"})
+    try:
+        wb = _lw(str(_REELS_QUEUE_FILE))
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read reels-queue.xlsx: {exc}") from exc
+    if not rows:
+        return JSONResponse({"pending": False, "message": "Empty file"})
+
+    header = [str(c or "").lower().strip() for c in rows[0]]
+    col = _queue_col_map(header)
+    if "destination" not in col:
+        raise HTTPException(status_code=400, detail="reels-queue.xlsx missing 'destination' column in row 1.")
+    if "status" not in col:
+        raise HTTPException(status_code=400, detail="reels-queue.xlsx missing 'status' column in row 1.")
+
+    def _cell(row: tuple, key: str, default: str = "") -> str:
+        i = col.get(key)
+        if i is None or i >= len(row):
+            return default
+        v = row[i]
+        return str(v).strip() if v is not None else default
+
+    for idx, row in enumerate(rows[1:]):
+        if _cell(row, "status", "").lower() == "pending":
+            pick_raw = _cell(row, "pick", "2")
+            try:
+                pick = max(1, min(10, int(float(pick_raw))))
+            except (ValueError, TypeError):
+                pick = 2
+            orient = _cell(row, "orientation", "portrait").lower()
+            if orient not in ("portrait", "landscape", "square"):
+                orient = "portrait"
+            return JSONResponse({
+                "pending": True,
+                "row_index": idx,
+                "destination": _cell(row, "destination"),
+                "tags": _cell(row, "tags"),
+                "orientation": orient,
+                "hook": _cell(row, "hook"),
+                "pick": pick,
+            })
+    return JSONResponse({"pending": False, "message": "No pending rows"})
+
+
+class MarkDoneBody(BaseModel):
+    row_index: int = Field(..., ge=0)
+    video_url: str = Field(default="")
+    status: str = Field(default="done", max_length=32)
+
+
+@app.post("/api/excel-reels/mark-done")
+async def excel_reels_mark_done(body: MarkDoneBody) -> JSONResponse:
+    """Update a row in output/reels-queue.xlsx: set status, video_url, processed_at."""
+    from openpyxl import load_workbook as _lw
+    if not _REELS_QUEUE_FILE.exists():
+        raise HTTPException(status_code=404, detail="reels-queue.xlsx not found in output/")
+    try:
+        wb = _lw(str(_REELS_QUEUE_FILE))
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Cannot read reels-queue.xlsx: {exc}") from exc
+    if not rows:
+        raise HTTPException(status_code=400, detail="Empty file")
+
+    header = [str(c or "").lower().strip() for c in rows[0]]
+    col = _queue_col_map(header)
+
+    # Ensure columns exist, appending if needed
+    def _ensure_col(key: str, label: str) -> int:
+        if key in col:
+            return col[key]
+        new_idx = len(header)
+        header.append(label)
+        ws.cell(row=1, column=new_idx + 1, value=label)
+        col[key] = new_idx
+        return new_idx
+
+    status_col = _ensure_col("status", "status")
+    url_col = _ensure_col("video_url", "video_url")
+    ts_col = _ensure_col("processed_at", "processed_at")
+
+    xl_row = body.row_index + 2  # header=1, data starts at 2
+    if xl_row > ws.max_row:
+        raise HTTPException(status_code=400, detail=f"row_index {body.row_index} out of range")
+
+    ws.cell(row=xl_row, column=status_col + 1, value=body.status)
+    ws.cell(row=xl_row, column=url_col + 1, value=body.video_url)
+    ws.cell(row=xl_row, column=ts_col + 1, value=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"))
+    try:
+        wb.save(str(_REELS_QUEUE_FILE))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save Excel: {exc}") from exc
+    return JSONResponse({"ok": True, "row_index": body.row_index, "status": body.status})
+
+
+# ── Instagram caption generation + preview ────────────────────────────────
+
+_IG_PREVIEWS_DIR = config.OUTPUT_DIR / "instagram_previews"
+
+_IG_CAPTION_SYSTEM = """\
+You are an expert travel content creator and Instagram growth strategist with 18+ years of \
+experience managing successful travel accounts.
+
+Generate content that feels like it was written by a passionate traveler—not an AI.
+
+Return ONLY valid JSON (no markdown, no code fences, no extra text) with this exact structure:
+
+{
+  "title": "",
+  "caption": "",
+  "hashtags": ["", "", "", "", ""],
+  "keywords": ""
+}
+
+Rules:
+
+1. Title
+- 40–70 characters
+- Curiosity-driven
+- Maximum 12 words
+- Maximum 1 emoji
+- Human sounding
+
+2. Caption
+- 100–220 words
+- Start with a strong hook
+- Tell a short personal story
+- Include emotions and sensory details
+- Naturally include destination-specific SEO keywords
+- End with a question and a call-to-action
+- Use 3–6 relevant emojis
+- Never sound robotic or overly promotional
+
+3. Hashtags
+- Return exactly 5 hashtags as strings WITHOUT the # symbol
+- 2 niche hashtags
+- 2 medium-volume hashtags
+- 1 broad hashtag
+- No duplicate or irrelevant hashtags
+
+4. Keywords
+- Return 10–20 Instagram SEO keywords as a single string
+- Separate keywords using "|" only
+- Do not include "#" symbols, commas, or numbering
+"""
+
+
+class InstagramCaptionBody(BaseModel):
+    destination: str = Field(..., min_length=1, max_length=500)
+    places: list[str] = Field(default_factory=list)
+    video_url: str = Field(default="")
+
+
+class InstagramPreviewSaveBody(BaseModel):
+    destination: str = Field(..., min_length=1)
+    video_url: str = Field(default="")
+    title: str = Field(default="")
+    caption: str = Field(..., min_length=1)
+    hashtags: list[str] = Field(default_factory=list)
+    keywords: str = Field(default="")
+    row_index: int = Field(default=-1)
+    reel_duration_secs: float = Field(default=0.0)
+
+
+@app.post("/api/instagram/generate-caption")
+async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse:
+    """Call Groq to produce a humanized caption, hashtags, and alt text for an Instagram post."""
+    from groq import Groq as _Groq
+
+    key = config.GROQ_API_KEY
+    if not key:
+        raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured.")
+
+    places_line = ", ".join(body.places) if body.places else body.destination
+    user_msg = (
+        f"Create an Instagram post for a travel reel about: {body.destination}\n"
+        f"Featured places in the reel: {places_line}\n"
+        "Make the caption feel like it was written by a passionate traveler sharing a real experience."
+    )
+
+    try:
+        client = _Groq(api_key=key)
+        completion = await asyncio.to_thread(
+            client.chat.completions.create,
+            model=config.GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": _IG_CAPTION_SYSTEM},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.9,
+            max_tokens=1024,
+            response_format={"type": "json_object"},
+        )
+        raw = completion.choices[0].message.content or ""
+        data = json.loads(raw)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail=f"Groq caption generation failed: {exc}") from exc
+
+    title = str(data.get("title") or "").strip()
+    caption = str(data.get("caption") or "").strip()
+    hashtags = [str(h).strip().lstrip("#") for h in (data.get("hashtags") or []) if str(h).strip()][:5]
+    keywords = str(data.get("keywords") or "").strip()
+
+    hashtag_block = " ".join(f"#{h}" for h in hashtags)
+    formatted_post = f"{caption}\n\n.\n.\n.\n{hashtag_block}"
+    char_count = len(formatted_post)
+
+    return JSONResponse({
+        "title": title,
+        "caption": caption,
+        "hashtags": hashtags,
+        "hashtag_block": hashtag_block,
+        "keywords": keywords,
+        "formatted_post": formatted_post,
+        "char_count": char_count,
+        "within_limit": char_count <= 2200,
+        "groq_model": config.GROQ_MODEL,
+    })
+
+
+@app.post("/api/instagram/preview/save")
+async def instagram_preview_save(body: InstagramPreviewSaveBody) -> JSONResponse:
+    """Persist a preview record to disk and return its preview_id + URL."""
+    _IG_PREVIEWS_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    slug = re.sub(r"[^a-z0-9]+", "-", body.destination.lower())[:40].strip("-")
+    preview_id = f"{ts}_{slug}"
+    preview_file = _IG_PREVIEWS_DIR / f"{preview_id}.json"
+
+    hashtag_block = " ".join(f"#{h}" for h in body.hashtags)
+    formatted_post = f"{body.caption}\n\n.\n.\n.\n{hashtag_block}"
+
+    record = {
+        "preview_id": preview_id,
+        "destination": body.destination,
+        "video_url": body.video_url,
+        "title": body.title,
+        "caption": body.caption,
+        "hashtags": body.hashtags,
+        "hashtag_block": hashtag_block,
+        "keywords": body.keywords,
+        "formatted_post": formatted_post,
+        "char_count": len(formatted_post),
+        "row_index": body.row_index,
+        "reel_duration_secs": body.reel_duration_secs,
+        "status": "pending_review",
+        "created_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+    preview_file.write_text(json.dumps(record, indent=2, ensure_ascii=False), encoding="utf-8")
+    return JSONResponse({
+        "ok": True,
+        "preview_id": preview_id,
+        "preview_url": f"/instagram-preview/{preview_id}",
+    })
+
+
+@app.get("/api/instagram/preview/{preview_id}")
+async def instagram_preview_get(preview_id: str) -> JSONResponse:
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", preview_id):
+        raise HTTPException(status_code=400, detail="Invalid preview_id.")
+    f = _IG_PREVIEWS_DIR / f"{preview_id}.json"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="Preview not found.")
+    return JSONResponse(json.loads(f.read_text(encoding="utf-8")))
+
+
+@app.get("/instagram-preview/{preview_id}", response_class=HTMLResponse)
+async def instagram_preview_page(preview_id: str, request: Request) -> HTMLResponse:
+    if not re.fullmatch(r"[A-Za-z0-9_\-]+", preview_id):
+        raise HTTPException(status_code=400, detail="Invalid preview_id.")
+    f = _IG_PREVIEWS_DIR / f"{preview_id}.json"
+    if not f.exists():
+        raise HTTPException(status_code=404, detail="Preview not found.")
+    data = json.loads(f.read_text(encoding="utf-8"))
+    return templates.TemplateResponse(
+        "instagram_preview.html",
+        {"request": request, "preview": data, "nav_active": "instagram_preview"},
+    )
+
+
+@app.get("/excel-reels", response_class=HTMLResponse)
+async def excel_reels_page(request: Request) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "excel_reels.html",
+        {"request": request, "title": "Excel → Reels", "nav_active": "excel_reels"},
+    )
+
+
+@app.get("/api/excel-reels/template")
+async def excel_reels_template() -> Response:
+    """Return a sample .xlsx the user can fill in and upload."""
+    import io as _io
+    from openpyxl import Workbook as _Workbook
+    wb = _Workbook()
+    ws = wb.active
+    ws.title = "Reels"
+    ws.append(["destination", "tags", "orientation", "hook", "pick"])
+    ws.append(["Top places to visit in Bali", "sunset, beach, aerial", "portrait", "Bali will steal your heart", 2])
+    ws.append(["Hidden gems of Portugal", "drone, coastline, historic", "landscape", "Portugal you've never seen", 2])
+    ws.append(["Best beaches in Thailand", "turquoise water, islands", "portrait", "Thailand awaits", 2])
+    buf = _io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    return Response(
+        content=buf.read(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": 'attachment; filename="velo-reels-template.xlsx"'},
+    )
+
+
+@app.post("/api/excel-reels/parse")
+async def excel_reels_parse(file: UploadFile = File(...)) -> JSONResponse:
+    """Parse an uploaded Excel file and return destination rows."""
+    import io as _io
+    from openpyxl import load_workbook as _lw
+    data = await file.read()
+    try:
+        wb = _lw(_io.BytesIO(data))
+        ws = wb.active
+        rows_raw = list(ws.iter_rows(values_only=True))
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=f"Cannot read Excel file: {exc}") from exc
+    if not rows_raw:
+        return JSONResponse({"rows": [], "count": 0})
+
+    col_aliases: dict[str, list[str]] = {
+        "destination": ["destination", "place", "query", "prompt", "location", "topic"],
+        "tags": ["tags", "extra_tags", "keywords", "tag"],
+        "orientation": ["orientation", "orient"],
+        "hook": ["hook", "hook_caption", "opening", "intro"],
+        "pick": ["pick", "pick_per_place", "images_per_place", "media_count"],
+    }
+    header = [str(c or "").lower().strip() for c in rows_raw[0]]
+    col_idx: dict[str, int] = {}
+    for key, aliases in col_aliases.items():
+        for alias in aliases:
+            if alias in header:
+                col_idx[key] = header.index(alias)
+                break
+
+    def _get(raw: tuple, key: str, default: str = "") -> str:
+        idx = col_idx.get(key)
+        if idx is None or idx >= len(raw):
+            return default
+        v = raw[idx]
+        return str(v).strip() if v is not None else default
+
+    rows: list[dict] = []
+    for raw in rows_raw[1:]:
+        dest = _get(raw, "destination")
+        if not dest:
+            continue
+        pick_raw = _get(raw, "pick", "2")
+        try:
+            pick = max(1, min(10, int(float(pick_raw))))
+        except (ValueError, TypeError):
+            pick = 2
+        orient = _get(raw, "orientation", "portrait").lower()
+        if orient not in ("portrait", "landscape", "square"):
+            orient = "portrait"
+        rows.append({
+            "destination": dest,
+            "tags": _get(raw, "tags"),
+            "orientation": orient,
+            "hook": _get(raw, "hook"),
+            "pick": pick,
+        })
+    return JSONResponse({"rows": rows, "count": len(rows)})
+
+
+@app.post("/api/excel-reels/run-one")
+async def excel_reels_run_one(body: ExcelReelRowRequest) -> JSONResponse:
+    """Full server-side pipeline for one Excel row: Groq → Pexels → pick N per place → build reel."""
+    from app.services.aggregator import aggregate_travel_media as _agg
+    tags = [t.strip() for t in body.tags.split(",") if t.strip()] if body.tags else []
+    orientation = body.orientation if body.orientation in ("portrait", "landscape", "square") else None
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        result = await _agg(
+            user_query=body.destination,
+            client=client,
+            extra_tags=tags,
+            orientation=orientation,
+        )
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    temp_dir = config.OUTPUT_DIR / "manual_reels" / f"excel_{ts}"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    media_paths: list[Path] = []
+    titles: list[str] = []
+    caption_texts: list[str] = []
+    for place in result.places:
+        for m in (place.media or [])[: body.pick]:
+            ext = ".mp4" if m.type == "video" else ".jpg"
+            digest = hashlib.sha256(m.url.encode()).hexdigest()[:12]
+            dest = temp_dir / f"media_{len(media_paths):02d}_{digest}{ext}"
+            try:
+                await asyncio.to_thread(media_processor.download_binary, m.url, dest)
+            except Exception:
+                continue
+            if dest.is_file() and dest.stat().st_size > 0:
+                media_paths.append(dest)
+                titles.append(place.name or "")
+                caption_texts.append((place.caption_text or "").strip())
+
+    if not media_paths:
+        raise HTTPException(status_code=502, detail="No media could be downloaded for this destination.")
+
+    overlay_positions = [(0.5, 0.15)] * len(media_paths)
+    overlay_font_scales = [1.0] * len(media_paths)
+    captions: list[str] = [""] * len(media_paths)
+
+    try:
+        res = await asyncio.to_thread(
+            manual_reel_builder.build_manual_reel,
+            uploads_dir=temp_dir,
+            media_paths=media_paths,
+            captions=captions,
+            music_track_id=None,
+            transition_type="slideleft",
+            transition_speed="default",
+            transition_xfade_scale=None,
+            overlay_positions=overlay_positions,
+            overlay_font_scales=overlay_font_scales,
+            titles=titles,
+            caption_texts=caption_texts,
+            hook_caption=body.hook or "",
+            hook_seconds=3.0,
+            image_segment_seconds=3.0,
+            video_segment_seconds=5.0,
+            show_branding=True,
+        )
+        out = dict(res)
+        out["video_url"] = _to_media_url(out.get("output_path") or "") or None
+        return JSONResponse(content=out)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except Exception:
+        logger.exception("Excel reel generation failed for %s", body.destination)
+        raise HTTPException(status_code=500, detail="Reel generation failed.") from None
 
 
 @app.post("/api/ad-reels/library/save")

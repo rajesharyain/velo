@@ -936,7 +936,7 @@ def _xfade_concat_reel_segments(
         in_vid = f"[{i}:v]"
         out_v = f"[rv{i}]"
         clip_filters.append(
-            f"{in_vid}fps=30,format=yuv420p,setpts=PTS-STARTPTS{out_v}"
+            f"{in_vid}format=yuv420p{out_v}"
         )
         v_labels.append(out_v)
 

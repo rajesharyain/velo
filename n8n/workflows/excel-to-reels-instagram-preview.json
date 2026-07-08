@@ -1,0 +1,208 @@
+{
+  "name": "Excel → Reels → Instagram Preview",
+  "nodes": [
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 360]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "http://velo:8000/api/excel-reels/next-pending",
+        "options": { "timeout": 15000 }
+      },
+      "id": "get-next-pending",
+      "name": "Get Next Pending Row",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [460, 360]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": false,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "check-pending",
+              "leftValue": "={{ $json.destination }}",
+              "rightValue": "",
+              "operator": { "type": "string", "operation": "notEquals" }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-pending",
+      "name": "Has Pending Row?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 360]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://velo:8000/api/ad-reels/travel-media",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"query\": \"{{ $('Get Next Pending Row').item.json.destination }}\",\n  \"tags\": {{ $('Get Next Pending Row').item.json.tags ? JSON.stringify($('Get Next Pending Row').item.json.tags.split(',').map(t => t.trim()).filter(Boolean)) : '[]' }},\n  \"orientation\": {{ $('Get Next Pending Row').item.json.orientation ? '\"' + $('Get Next Pending Row').item.json.orientation + '\"' : 'null' }},\n  \"download\": false\n}",
+        "options": { "timeout": 180000 }
+      },
+      "id": "fetch-media",
+      "name": "Fetch Travel Media (Groq + Pexels)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [900, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst places = data.places || [];\n\nconst pendingData = $('Get Next Pending Row').first().json;\nconst TARGET_ITEMS = 6;\nconst TARGET_DURATION_SECS = 20;\n\nconst picked = [];\n\n// Pass 1: one video per place\nfor (const place of places) {\n  if (picked.length >= TARGET_ITEMS) break;\n  const media = place.media || [];\n  const video = media.find(m => m.type === 'video' && m.url);\n  if (video) {\n    picked.push({\n      source: 'url',\n      url: video.url,\n      media_type: 'video',\n      title: place.name,\n      caption_text: place.caption_text || '',\n    });\n  }\n}\n\n// Pass 2: fill remaining with images\nfor (const place of places) {\n  if (picked.length >= TARGET_ITEMS) break;\n  const media = place.media || [];\n  const alreadyPickedUrls = new Set(picked.map(p => p.url));\n  for (const item of media) {\n    if (picked.length >= TARGET_ITEMS) break;\n    if (item.type === 'image' && item.url && !alreadyPickedUrls.has(item.url)) {\n      picked.push({\n        source: 'url',\n        url: item.url,\n        media_type: 'image',\n        title: place.name,\n        caption_text: place.caption_text || '',\n      });\n      alreadyPickedUrls.add(item.url);\n    }\n  }\n}\n\nif (picked.length === 0) throw new Error('No media items found in travel-media response');\n\nconst videoCount = picked.filter(p => p.media_type === 'video').length;\nconst imageCount = picked.filter(p => p.media_type === 'image').length;\nlet totalEstimated = videoCount * 5 + imageCount * 3;\nlet clipVideo = 5, clipImage = 3;\nif (totalEstimated < 18) {\n  const scale = TARGET_DURATION_SECS / Math.max(totalEstimated, 1);\n  clipVideo = Math.round(5 * scale * 10) / 10;\n  clipImage = Math.round(3 * scale * 10) / 10;\n} else if (totalEstimated > 22) {\n  const scale = TARGET_DURATION_SECS / totalEstimated;\n  clipVideo = Math.round(5 * scale * 10) / 10;\n  clipImage = Math.round(3 * scale * 10) / 10;\n}\n\nreturn [{\n  json: {\n    picked_items: picked,\n    clip_seconds_video: String(clipVideo),\n    clip_seconds_image: String(clipImage),\n    estimated_duration_secs: videoCount * clipVideo + imageCount * clipImage,\n    place_names: places.map(p => p.name),\n    row_index: pendingData.row_index,\n    destination: pendingData.destination,\n  }\n}];\n"
+      },
+      "id": "pick-media",
+      "name": "Pick Best Media Items",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://velo:8000/api/upload-reel/generate",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            { "name": "items_json", "value": "={{ JSON.stringify($json.picked_items) }}" },
+            { "name": "transition_type", "value": "slideleft" },
+            { "name": "clip_seconds_image", "value": "={{ $json.clip_seconds_image }}" },
+            { "name": "clip_seconds_video", "value": "={{ $json.clip_seconds_video }}" },
+            { "name": "music_track_id", "value": "" },
+            { "name": "show_branding", "value": "1" }
+          ]
+        },
+        "options": { "timeout": 300000 }
+      },
+      "id": "generate-reel",
+      "name": "Generate Reel (FFmpeg)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://velo:8000/api/instagram/generate-caption",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"destination\": \"{{ $('Pick Best Media Items').item.json.destination }}\",\n  \"places\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_names || []) }},\n  \"video_url\": \"{{ $json.video_url || '' }}\"\n}",
+        "options": { "timeout": 60000 }
+      },
+      "id": "generate-caption",
+      "name": "Generate Caption & Hashtags (AI)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1560, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "const captionData = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\n\nconst videoUrl = reelData.video_url || '';\n\nreturn [{\n  json: {\n    destination: pickData.destination,\n    video_url: videoUrl,\n    title: captionData.title || '',\n    caption: captionData.caption || '',\n    hashtags: captionData.hashtags || [],\n    hashtag_block: captionData.hashtag_block || '',\n    keywords: captionData.keywords || '',\n    formatted_post: captionData.formatted_post || '',\n    char_count: captionData.char_count || 0,\n    within_limit: captionData.within_limit !== false,\n    reel_duration_secs: pickData.estimated_duration_secs || 0,\n    row_index: pickData.row_index,\n    groq_model: captionData.groq_model || '',\n    place_names: pickData.place_names || [],\n  }\n}];\n"
+      },
+      "id": "assemble-preview",
+      "name": "Assemble Preview Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1780, 260]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://velo:8000/api/instagram/preview/save",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [{ "name": "Content-Type", "value": "application/json" }]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"destination\": \"{{ $json.destination }}\",\n  \"video_url\": \"{{ $json.video_url }}\",\n  \"title\": {{ JSON.stringify($json.title) }},\n  \"caption\": {{ JSON.stringify($json.caption) }},\n  \"hashtags\": {{ JSON.stringify($json.hashtags) }},\n  \"keywords\": {{ JSON.stringify($json.keywords) }},\n  \"row_index\": {{ $json.row_index }},\n  \"reel_duration_secs\": {{ $json.reel_duration_secs }}\n}",
+        "options": { "timeout": 15000 }
+      },
+      "id": "save-preview",
+      "name": "Save Preview",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2000, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "const saveResult = $input.first().json;\nconst previewData = $('Assemble Preview Data').first().json;\n\nconst previewUrl = `http://localhost:8000${saveResult.preview_url}`;\n\nconsole.log('\\n========================================');\nconsole.log('✅ INSTAGRAM PREVIEW READY FOR REVIEW');\nconsole.log('========================================');\nconsole.log(`Destination : ${previewData.destination}`);\nconsole.log(`Preview URL : ${previewUrl}`);\nconsole.log(`Video URL   : http://localhost:8000${previewData.video_url}`);\nconsole.log(`Chars       : ${previewData.char_count} / 2200`);\nconsole.log(`Within limit: ${previewData.within_limit}`);\nconsole.log('----------------------------------------');\nconsole.log('Caption preview:');\nconsole.log(previewData.caption.substring(0, 200) + '...');\nconsole.log('Hashtags:', previewData.hashtag_block.substring(0, 120) + '...');\nconsole.log('========================================\\n');\n\nreturn [{\n  json: {\n    status: 'preview_ready',\n    preview_id: saveResult.preview_id,\n    preview_url: previewUrl,\n    destination: previewData.destination,\n    video_url: `http://localhost:8000${previewData.video_url}`,\n    caption_preview: previewData.caption.substring(0, 200) + '...',\n    hashtag_count: previewData.hashtags.length,\n    char_count: previewData.char_count,\n    within_limit: previewData.within_limit,\n    next_step: 'Open the preview URL, review caption and hashtags, then approve to publish.',\n  }\n}];\n"
+      },
+      "id": "preview-output",
+      "name": "Preview Ready — Awaiting Approval",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2220, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "console.log('Queue is empty — no pending rows in reels-queue.xlsx');\nreturn [{ json: { status: 'no_pending', message: 'Queue is empty.' } }];\n"
+      },
+      "id": "no-pending",
+      "name": "Queue Empty (No-op)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 480]
+    }
+  ],
+  "connections": {
+    "Manual Trigger": {
+      "main": [[{ "node": "Get Next Pending Row", "type": "main", "index": 0 }]]
+    },
+    "Get Next Pending Row": {
+      "main": [[{ "node": "Has Pending Row?", "type": "main", "index": 0 }]]
+    },
+    "Has Pending Row?": {
+      "main": [
+        [{ "node": "Fetch Travel Media (Groq + Pexels)", "type": "main", "index": 0 }],
+        [{ "node": "Queue Empty (No-op)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch Travel Media (Groq + Pexels)": {
+      "main": [[{ "node": "Pick Best Media Items", "type": "main", "index": 0 }]]
+    },
+    "Pick Best Media Items": {
+      "main": [[{ "node": "Generate Reel (FFmpeg)", "type": "main", "index": 0 }]]
+    },
+    "Generate Reel (FFmpeg)": {
+      "main": [[{ "node": "Generate Caption & Hashtags (AI)", "type": "main", "index": 0 }]]
+    },
+    "Generate Caption & Hashtags (AI)": {
+      "main": [[{ "node": "Assemble Preview Data", "type": "main", "index": 0 }]]
+    },
+    "Assemble Preview Data": {
+      "main": [[{ "node": "Save Preview", "type": "main", "index": 0 }]]
+    },
+    "Save Preview": {
+      "main": [[{ "node": "Preview Ready — Awaiting Approval", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {},
+  "staticData": null,
+  "meta": { "templateCredsSetupCompleted": true },
+  "pinData": {}
+}

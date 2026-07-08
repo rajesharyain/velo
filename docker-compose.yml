@@ -1,17 +1,24 @@
-# Local n8n for automating Velo → Instagram (see n8n/README.md).
-# Velo API runs separately, e.g.:
-#   uvicorn travel_instagram.web_app:app --host 0.0.0.0 --port 8000
-#
 # Usage:
 #   docker compose up -d
-#   open http://localhost:5678
+#   open http://localhost:8000   ← Velo
+#   open http://localhost:5678   ← n8n
 #
+# First run: copy .env.example to .env and set GROQ_API_KEY + PEXELS_API_KEY.
 # Windows: start Docker Desktop first and wait until it says "Engine running".
-# If you see "dockerDesktopLinuxEngine ... file not found", the daemon is not up.
 
 services:
+  velo:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    volumes:
+      - ./output:/app/output     # generated carousels, reels, etc.
+      - ./music:/app/music       # drop MP3/WAV here for reel soundtracks
+    restart: unless-stopped
+
   n8n:
-    image: docker.n8n.io/n8nio/n8n:0.220.1
+    image: docker.n8n.io/n8nio/n8n:latest
     ports:
       - "5678:5678"
     environment:
@@ -21,7 +28,7 @@ services:
       - WEBHOOK_URL=http://localhost:5678/
       - GENERIC_TIMEZONE=UTC
       # Passed into Code / HTTP nodes via $env (set in n8n UI → Variables, or uncomment below)
-      # - VELO_API_URL=http://host.docker.internal:8000
+      # - VELO_API_URL=http://velo:8000
       # - MEDIA_PUBLIC_BASE=https://your-ngrok-url.ngrok-free.app
       # - IG_USER_ID=your_instagram_business_account_id
       # - IG_ACCESS_TOKEN=your_long_lived_token

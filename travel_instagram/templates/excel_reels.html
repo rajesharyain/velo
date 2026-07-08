@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{{ title }}</title>
+  <style>
+    :root { --ig-top: 54px; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; font-family: Inter, system-ui, Arial, sans-serif; background: #0b1220; color: #e7ecf5; }
+    .ig-top { position: sticky; top: 0; z-index: 50; min-height: var(--ig-top); padding: 0.5rem 0.75rem 0.6rem; background: rgba(0,0,0,0.92); backdrop-filter: blur(10px); border-bottom: 1px solid rgba(255,255,255,0.08); display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 0.75rem; }
+    .site-nav { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+    .nav-link { color: rgba(255,255,255,0.55); text-decoration: none; font-size: 0.82rem; padding: 0.35rem 0.65rem; border-radius: 8px; border: none; }
+    .nav-link:hover { color: #fff; }
+    .nav-link.active { color: #fff; background: rgba(255,255,255,0.1); }
+    .wrap { max-width: 1100px; margin: 0 auto; padding: 20px; }
+    .card { background: #111a2d; border: 1px solid #26324a; border-radius: 14px; padding: 20px; margin-top: 16px; }
+    h2 { margin: 0 0 8px; font-size: 1.15rem; }
+    h3 { margin: 1rem 0 6px; font-size: 0.95rem; color: #b8c5e0; }
+    .muted { color: #9ca8bf; font-size: 13px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; }
+    button { cursor: pointer; font-weight: 600; background: #0d1525; color: #e7ecf5; border: 1px solid #2a3650; border-radius: 10px; padding: 9px 16px; font-family: inherit; font-size: 13px; }
+    button:hover:not(:disabled) { background: #162035; }
+    button.primary { background: #2563eb; border-color: #3b82f6; }
+    button.primary:hover:not(:disabled) { background: #1d4ed8; }
+    button.secondary { background: #1e3a5f; border-color: #2a5080; }
+    button.secondary:hover:not(:disabled) { background: #254a7a; }
+    button.success { background: #166534; border-color: #22c55e; }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+    .status { font-size: 13px; margin-top: 10px; }
+    .err { color: #f87171; }
+    .ok { color: #86efac; }
+    .warn { color: #fbbf24; }
+
+    /* Upload drop zone */
+    .drop-zone {
+      border: 2px dashed #2a3650;
+      border-radius: 12px;
+      padding: 40px 20px;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color 0.2s, background 0.2s;
+      margin: 14px 0;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #4f8cff; background: rgba(79,140,255,0.05); }
+    .drop-zone input[type=file] { display: none; }
+    .drop-zone p { margin: 6px 0; }
+
+    /* Preview table */
+    .preview-table-wrap { overflow-x: auto; margin-top: 14px; }
+    table.preview { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.preview th, table.preview td { border: 1px solid #2a3650; padding: 8px 10px; text-align: left; vertical-align: middle; }
+    table.preview th { background: #0d1525; color: #b8c5e0; white-space: nowrap; }
+    table.preview tr:hover td { background: rgba(255,255,255,0.02); }
+    .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    .pill-p { background: #3b2f5c; color: #d8b4fe; }
+    .pill-l { background: #1e3a5f; color: #93c5fd; }
+    .pill-s { background: #1e3a30; color: #86efac; }
+
+    /* Results */
+    .result-row-ok { background: rgba(22,101,52,0.15) !important; }
+    .result-row-err { background: rgba(127,29,29,0.15) !important; }
+    .result-row-running { background: rgba(30,58,95,0.25) !important; }
+    .video-link { color: #93c5fd; font-weight: 600; text-decoration: none; }
+    .video-link:hover { text-decoration: underline; }
+    .spinner { display: inline-block; width: 14px; height: 14px; border: 2px solid #4f8cff; border-top-color: transparent; border-radius: 50%; animation: spin 0.7s linear infinite; vertical-align: middle; margin-right: 6px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .format-hint { background: #0d1525; border: 1px solid #26324a; border-radius: 10px; padding: 12px 14px; font-size: 12px; color: #9ca8bf; margin-top: 14px; }
+    .format-hint code { color: #c4d4f5; }
+    .format-hint table { margin-top: 8px; border-collapse: collapse; }
+    .format-hint th, .format-hint td { border: 1px solid #2a3650; padding: 4px 10px; }
+    .format-hint th { color: #b8c5e0; }
+
+    #runAllProgress { display: none; margin-top: 14px; }
+    .progress-bar-wrap { background: #0d1525; border: 1px solid #26324a; border-radius: 6px; height: 8px; margin-top: 8px; overflow: hidden; }
+    .progress-bar { height: 100%; background: #2563eb; border-radius: 6px; transition: width 0.4s; }
+  </style>
+</head>
+<body>
+  <header class="ig-top">
+    {% include "_nav.html" %}
+  </header>
+  <div class="wrap">
+    <div class="card">
+      <h2>Excel → Reels</h2>
+      <p class="muted">Upload an Excel file with destination rows. For each row you can either <strong>open it interactively</strong> in Reels AD (see images, pick some, build manually) or <strong>run it automatically</strong> on the server — the server picks the first few media items per place and builds the reel for you.</p>
+
+      <div class="row" style="margin-top:14px;">
+        <button type="button" id="downloadTplBtn" class="secondary">Download sample Excel template</button>
+      </div>
+
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" accept=".xlsx,.xls" />
+        <p style="font-size:1.2rem; margin-bottom:8px;">📄</p>
+        <p style="font-weight:600;">Drop Excel file here or click to browse</p>
+        <p class="muted">Accepts .xlsx / .xls</p>
+      </div>
+
+      <div class="format-hint">
+        <strong>Excel column format</strong> (row 1 = headers, row 2+ = data):
+        <table>
+          <tr><th>Column</th><th>Required</th><th>Example</th><th>Notes</th></tr>
+          <tr><td><code>destination</code></td><td>Yes</td><td>Top places in Bali</td><td>Also accepts: place, query, prompt, location</td></tr>
+          <tr><td><code>tags</code></td><td>No</td><td>sunset, beach, aerial</td><td>Comma-separated. Also: extra_tags, keywords</td></tr>
+          <tr><td><code>orientation</code></td><td>No</td><td>portrait</td><td>portrait / landscape / square. Default: portrait</td></tr>
+          <tr><td><code>hook</code></td><td>No</td><td>Bali will steal your heart</td><td>Opening hook text on first clip</td></tr>
+          <tr><td><code>pick</code></td><td>No</td><td>2</td><td>Media items to pick per place (1–10). Default: 2</td></tr>
+        </table>
+      </div>
+
+      <div id="parseStatus" class="status" style="margin-top:10px;"></div>
+    </div>
+
+    <div id="previewSection" style="display:none;">
+      <div class="card">
+        <div class="row" style="justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:12px;">
+          <div>
+            <h2 style="margin:0 0 4px;">Parsed rows</h2>
+            <p class="muted" id="rowCountLabel"></p>
+          </div>
+          <div class="row" style="gap:10px;">
+            <button type="button" id="runAllBtn" class="primary">Run all on server</button>
+            <button type="button" id="stopBtn" class="secondary" style="display:none;">Stop</button>
+          </div>
+        </div>
+
+        <div id="runAllProgress">
+          <p class="muted" id="runAllProgressLabel">Running 0 / 0…</p>
+          <div class="progress-bar-wrap"><div class="progress-bar" id="runAllBar" style="width:0%"></div></div>
+        </div>
+
+        <div class="preview-table-wrap">
+          <table class="preview" id="previewTable">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Destination</th>
+                <th>Tags</th>
+                <th>Orientation</th>
+                <th>Hook</th>
+                <th>Pick</th>
+                <th>Open interactive</th>
+                <th>Auto-run status</th>
+              </tr>
+            </thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const parseStatus = document.getElementById("parseStatus");
+    const previewSection = document.getElementById("previewSection");
+    const previewBody = document.getElementById("previewBody");
+    const rowCountLabel = document.getElementById("rowCountLabel");
+    const runAllBtn = document.getElementById("runAllBtn");
+    const stopBtn = document.getElementById("stopBtn");
+    const runAllProgress = document.getElementById("runAllProgress");
+    const runAllProgressLabel = document.getElementById("runAllProgressLabel");
+    const runAllBar = document.getElementById("runAllBar");
+    const downloadTplBtn = document.getElementById("downloadTplBtn");
+
+    downloadTplBtn.addEventListener("click", () => {
+      window.location.href = "/api/excel-reels/template";
+    });
+
+    let parsedRows = [];
+    let stopRequested = false;
+
+    // Drag-and-drop
+    dropZone.addEventListener("click", () => fileInput.click());
+    dropZone.addEventListener("dragover", (e) => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const f = e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+    fileInput.addEventListener("change", () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    async function handleFile(file) {
+      parseStatus.className = "status muted";
+      parseStatus.textContent = "Parsing…";
+      previewSection.style.display = "none";
+
+      const fd = new FormData();
+      fd.append("file", file);
+      try {
+        const res = await fetch("/api/excel-reels/parse", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.detail || res.statusText);
+        parsedRows = data.rows || [];
+        if (!parsedRows.length) {
+          parseStatus.className = "status warn";
+          parseStatus.textContent = "No data rows found. Make sure row 1 has headers and row 2+ has destinations.";
+          return;
+        }
+        parseStatus.className = "status ok";
+        parseStatus.textContent = `Parsed ${parsedRows.length} row${parsedRows.length === 1 ? "" : "s"}.`;
+        renderPreview();
+      } catch (e) {
+        parseStatus.className = "status err";
+        parseStatus.textContent = String(e && e.message ? e.message : e);
+      }
+    }
+
+    function orientPill(o) {
+      if (o === "landscape") return '<span class="pill pill-l">landscape</span>';
+      if (o === "square") return '<span class="pill pill-s">square</span>';
+      return '<span class="pill pill-p">portrait</span>';
+    }
+
+    function reelsAdUrl(row) {
+      const p = new URLSearchParams();
+      p.set("query", row.destination);
+      if (row.tags) p.set("tags", row.tags);
+      if (row.orientation) p.set("orient", row.orientation);
+      if (row.hook) p.set("hook", row.hook);
+      p.set("pick", String(row.pick || 2));
+      p.set("auto", "1");
+      return "/ad-reels?" + p.toString();
+    }
+
+    function renderPreview() {
+      previewBody.innerHTML = "";
+      parsedRows.forEach((row, i) => {
+        const tr = document.createElement("tr");
+        tr.id = `row-${i}`;
+        tr.innerHTML = `
+          <td>${i + 1}</td>
+          <td style="font-weight:600; max-width:260px;">${esc(row.destination)}</td>
+          <td class="muted" style="max-width:200px;">${esc(row.tags || "—")}</td>
+          <td>${orientPill(row.orientation)}</td>
+          <td class="muted" style="max-width:180px;">${esc(row.hook || "—")}</td>
+          <td style="text-align:center;">${row.pick}</td>
+          <td>
+            <a href="${reelsAdUrl(row)}" target="_blank" rel="noopener" class="video-link" style="font-size:12px;">
+              Open in Reels AD →
+            </a>
+          </td>
+          <td id="status-${i}" class="muted" style="font-size:12px;">—</td>
+        `;
+        previewBody.appendChild(tr);
+      });
+      rowCountLabel.textContent = `${parsedRows.length} destination${parsedRows.length === 1 ? "" : "s"} ready`;
+      previewSection.style.display = "block";
+    }
+
+    function esc(s) {
+      return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    }
+
+    function setRowStatus(i, html, cls) {
+      const cell = document.getElementById(`status-${i}`);
+      const row = document.getElementById(`row-${i}`);
+      if (!cell) return;
+      cell.innerHTML = html;
+      if (row) {
+        row.className = cls || "";
+      }
+    }
+
+    stopBtn.addEventListener("click", () => { stopRequested = true; });
+
+    runAllBtn.addEventListener("click", async () => {
+      if (!parsedRows.length) return;
+      stopRequested = false;
+      runAllBtn.disabled = true;
+      stopBtn.style.display = "inline-block";
+      runAllProgress.style.display = "block";
+
+      let done = 0;
+      const total = parsedRows.length;
+
+      for (let i = 0; i < parsedRows.length; i++) {
+        if (stopRequested) {
+          setRowStatus(i, "Stopped", "");
+          for (let j = i + 1; j < parsedRows.length; j++) setRowStatus(j, "—", "");
+          break;
+        }
+
+        const row = parsedRows[i];
+        runAllProgressLabel.textContent = `Running ${i + 1} / ${total}: ${row.destination}`;
+        runAllBar.style.width = ((i / total) * 100).toFixed(1) + "%";
+        setRowStatus(i, '<span class="spinner"></span>Running…', "result-row-running");
+        document.getElementById(`row-${i}`)?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+
+        try {
+          const res = await fetch("/api/excel-reels/run-one", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              destination: row.destination,
+              tags: row.tags || "",
+              orientation: row.orientation || "portrait",
+              hook: row.hook || "",
+              pick: row.pick || 2,
+            }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+          const url = data.video_url || "";
+          if (url) {
+            setRowStatus(i, `<a class="video-link" href="${url}" target="_blank" rel="noopener">▶ Open reel</a>`, "result-row-ok");
+          } else {
+            setRowStatus(i, '<span class="warn">Done (no URL)</span>', "result-row-ok");
+          }
+        } catch (e) {
+          setRowStatus(i, `<span class="err">${esc(String(e && e.message ? e.message : e))}</span>`, "result-row-err");
+        }
+
+        done++;
+        runAllBar.style.width = ((done / total) * 100).toFixed(1) + "%";
+      }
+
+      runAllProgressLabel.textContent = stopRequested
+        ? `Stopped after ${done} / ${total}`
+        : `Done — ${done} / ${total} rows processed`;
+      runAllBar.style.width = "100%";
+      runAllBtn.disabled = false;
+      stopBtn.style.display = "none";
+    });
+  </script>
+</body>
+</html>
