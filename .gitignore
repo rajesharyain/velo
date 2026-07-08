@@ -12,3 +12,5 @@ travel_instagram/fonts/*.ttf
 *.log
 .DS_Store
 .gstack/
+velo.config.env
+logs/

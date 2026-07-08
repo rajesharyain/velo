@@ -7,7 +7,21 @@
       "name": "Manual Trigger",
       "type": "n8n-nodes-base.manualTrigger",
       "typeVersion": 1,
-      "position": [240, 360]
+      "position": [240, 280]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "velo-daily-run",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "trigger-webhook",
+      "name": "Daily Schedule Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 440],
+      "webhookId": "velo-daily-run"
     },
     {
       "parameters": {
@@ -259,6 +273,9 @@
   ],
   "connections": {
     "Manual Trigger": {
+      "main": [[{ "node": "Get Next Pending Row", "type": "main", "index": 0 }]]
+    },
+    "Daily Schedule Trigger": {
       "main": [[{ "node": "Get Next Pending Row", "type": "main", "index": 0 }]]
     },
     "Get Next Pending Row": {
