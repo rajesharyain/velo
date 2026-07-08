@@ -752,25 +752,19 @@ def build_carousel_slides(
     return out_paths
 
 
-def _mux_music(video_path: Path, music_path: Path, out: Path) -> None:
+def _mux_music(video_path: Path, music_path: Path, out: Path, music_volume: float = 0.3) -> None:
     exe = _ensure_ffmpeg()
+    vol = max(0.01, min(2.0, float(music_volume)))
     cmd = [
-        exe,
-        "-y",
-        "-i",
-        str(video_path),
-        "-i",
-        str(music_path),
-        "-map",
-        "0:v:0",
-        "-map",
-        "1:a:0",
-        "-c:v",
-        "copy",
-        "-c:a",
-        "aac",
-        "-b:a",
-        "192k",
+        exe, "-y",
+        "-i", str(video_path),
+        "-i", str(music_path),
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-b:a", "192k",
+        "-af", f"volume={vol}",
         "-shortest",
         str(out),
     ]

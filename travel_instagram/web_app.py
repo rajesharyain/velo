@@ -1262,6 +1262,7 @@ async def api_upload_reel_generate(
     overlay_anchor_x: str = Form(default="0.5"),
     overlay_anchor_y: str = Form(default="0.15"),
     show_branding: str = Form(default="1"),
+    music_volume: str = Form(default="0.3"),
 ) -> JSONResponse:
     if music_track_id == "__auto__":
         music_track_id = None
@@ -1530,6 +1531,7 @@ async def api_upload_reel_generate(
             image_segment_seconds=clip_img,
             video_segment_seconds=clip_vid,
             show_branding=show_brand_on_reel,
+            music_volume=max(0.01, min(2.0, float(music_volume or "0.3"))),
         )
         out = dict(res)
         out["video_url"] = _to_media_url(out.get("output_path") or "") or None
@@ -1541,6 +1543,69 @@ async def api_upload_reel_generate(
     except Exception:
         logger.exception("Upload reel generation failed")
         raise HTTPException(status_code=500, detail="Upload reel generation failed") from None
+
+
+@app.post("/api/upload-reel/convert-landscape")
+async def api_upload_reel_convert_landscape(
+    video_url: str = Form(...),
+    music_volume: str = Form(default="0.3"),
+) -> JSONResponse:
+    """
+    Convert a 9:16 reel to 16:9 landscape (YouTube format).
+
+    Uses a blurred + zoomed copy of the source as background, with the
+    original portrait video centred on top — the standard YouTube
+    Shorts-to-landscape conversion style.
+    """
+    import subprocess as _sp
+
+    rel = video_url.lstrip("/")
+    src = config.OUTPUT_DIR.parent / rel if not rel.startswith("output/") else config.OUTPUT_DIR.parent / rel
+    if not src.is_file():
+        src = config.OUTPUT_DIR / Path(rel).relative_to("media") if rel.startswith("media/") else None  # type: ignore[assignment]
+        if src is None or not src.is_file():  # type: ignore[union-attr]
+            raise HTTPException(status_code=404, detail=f"Source video not found: {video_url}")
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    out_dir = config.OUTPUT_DIR / "youtube_reels"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    slug = re.sub(r"[^a-z0-9]+", "-", src.stem.lower())[:40]
+    out_mp4 = out_dir / f"{ts}_{slug}_16x9.mp4"
+
+    exe = media_processor._ensure_ffmpeg()  # type: ignore[attr-defined]
+    vol = max(0.01, min(2.0, float(music_volume or "0.3")))
+
+    # Blurred background: scale source to fill 1920x1080 + heavy blur
+    # Foreground: scale source to fit height=1080, centre it
+    filter_complex = (
+        "[0:v]scale=1920:1080:force_original_aspect_ratio=increase,"
+        "crop=1920:1080,boxblur=30:5[bg];"
+        "[0:v]scale=-2:1080[fg];"
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2[v]"
+    )
+    cmd = [
+        exe, "-y",
+        "-i", str(src),
+        "-filter_complex", filter_complex,
+        "-map", "[v]",
+        "-map", "0:a?",
+        "-c:v", "libx264", "-crf", "23", "-preset", "fast",
+        "-c:a", "aac", "-b:a", "192k",
+        "-af", f"volume={vol}",
+        "-movflags", "+faststart",
+        str(out_mp4),
+    ]
+
+    def _run() -> None:
+        media_processor._run_ffmpeg_cmd(cmd, "landscape convert")  # type: ignore[attr-defined]
+
+    try:
+        await asyncio.to_thread(_run)
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+    video_url_out = "/media/" + out_mp4.relative_to(config.OUTPUT_DIR).as_posix()
+    return JSONResponse({"ok": True, "video_url": video_url_out, "format": "16x9", "path": str(out_mp4)})
 
 
 @app.post("/api/upload-reel/autofill")

@@ -903,7 +903,7 @@ def build_manual_reel(
     media_paths: list[Path],
     captions: list[str],
     music_track_id: str | None,
-    transition_type: str = "slideleft",
+    transition_type: str = "fade",
     transition_speed: str = "auto",
     transition_xfade_scale: float | None = None,
     overlay_positions: list[tuple[float, float]] | None = None,
@@ -915,6 +915,7 @@ def build_manual_reel(
     image_segment_seconds: float = 3.0,
     video_segment_seconds: float = 5.0,
     show_branding: bool = True,
+    music_volume: float = 0.3,
 ) -> dict[str, Any]:
     if not media_paths:
         raise RuntimeError("Upload at least one image or video.")
@@ -1144,7 +1145,7 @@ def build_manual_reel(
     out_mp4 = out_dir / "reel.mp4"
     music_path = config.resolve_reel_music(music_track_id)
     if music_path is not None and music_path.is_file():
-        media_processor._mux_music(no_audio, music_path, out_mp4)  # type: ignore[attr-defined]
+        media_processor._mux_music(no_audio, music_path, out_mp4, music_volume=music_volume)  # type: ignore[attr-defined]
     else:
         shutil.copy(no_audio, out_mp4)
 
