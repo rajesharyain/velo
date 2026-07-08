@@ -150,62 +150,15 @@
     },
     {
       "parameters": {
-        "jsCode": "const saveResult = $input.first().json;\nconst previewData = $('Assemble Preview Data').first().json;\n\nconst previewUrl = `http://localhost:8000${saveResult.preview_url}`;\nconst resumeBase = $execution.resumeUrl;\nconst approveUrl = `${resumeBase}?approve=yes`;\nconst rejectUrl  = `${resumeBase}?approve=no`;\n\nconsole.log('\\n========================================');\nconsole.log('✅ PREVIEW READY — AWAITING YOUR DECISION');\nconsole.log('========================================');\nconsole.log(`Destination : ${previewData.destination}`);\nconsole.log(`Preview URL : ${previewUrl}`);\nconsole.log(`Chars       : ${previewData.char_count} / 2200`);\nconsole.log('----------------------------------------');\nconsole.log('👉 APPROVE & PUBLISH TO INSTAGRAM:');\nconsole.log('   ' + approveUrl);\nconsole.log('👉 REJECT (skip this post):');\nconsole.log('   ' + rejectUrl);\nconsole.log('========================================\\n');\n\nreturn [{ json: {\n  status: 'awaiting_approval',\n  preview_id: saveResult.preview_id,\n  preview_url: previewUrl,\n  approve_url: approveUrl,\n  reject_url: rejectUrl,\n  destination: previewData.destination,\n  char_count: previewData.char_count,\n  within_limit: previewData.within_limit,\n}}];\n"
-      },
-      "id": "preview-output",
-      "name": "Preview Ready — Awaiting Approval",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2220, 260]
-    },
-    {
-      "parameters": {
-        "resume": "webhook"
-      },
-      "id": "wait-approval",
-      "name": "Wait for Approval",
-      "type": "n8n-nodes-base.wait",
-      "typeVersion": 1,
-      "position": [2440, 260],
-      "webhookId": "ig-approve-velo-001"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "options": {
-            "caseSensitive": false,
-            "leftValue": "",
-            "typeValidation": "loose"
-          },
-          "conditions": [
-            {
-              "id": "check-approved",
-              "leftValue": "={{ $json.query.approve }}",
-              "rightValue": "yes",
-              "operator": { "type": "string", "operation": "equals" }
-            }
-          ],
-          "combinator": "and"
-        },
-        "options": {}
-      },
-      "id": "if-approved",
-      "name": "Approved?",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 2,
-      "position": [2660, 260]
-    },
-    {
-      "parameters": {
         "method": "POST",
-        "url": "=http://velo:8000/api/instagram/publish/{{ $('Save Preview').item.json.preview_id }}",
+        "url": "=http://velo:8000/api/instagram/publish/{{ $json.preview_id }}",
         "options": { "timeout": 120000 }
       },
       "id": "publish-instagram",
       "name": "Publish to Instagram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [2880, 160]
+      "position": [2220, 260]
     },
     {
       "parameters": {
@@ -215,17 +168,7 @@
       "name": "Published!",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [3100, 160]
-    },
-    {
-      "parameters": {
-        "jsCode": "const previewId = $('Save Preview').first().json.preview_id;\nconsole.log('\\n❌ Post rejected by user. Preview ID:', previewId);\nreturn [{ json: { status: 'rejected', preview_id: previewId } }];\n"
-      },
-      "id": "rejected-log",
-      "name": "Rejected",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [2880, 380]
+      "position": [2440, 260]
     },
     {
       "parameters": {
@@ -267,19 +210,7 @@
       "main": [[{ "node": "Save Preview", "type": "main", "index": 0 }]]
     },
     "Save Preview": {
-      "main": [[{ "node": "Preview Ready — Awaiting Approval", "type": "main", "index": 0 }]]
-    },
-    "Preview Ready — Awaiting Approval": {
-      "main": [[{ "node": "Wait for Approval", "type": "main", "index": 0 }]]
-    },
-    "Wait for Approval": {
-      "main": [[{ "node": "Approved?", "type": "main", "index": 0 }]]
-    },
-    "Approved?": {
-      "main": [
-        [{ "node": "Publish to Instagram", "type": "main", "index": 0 }],
-        [{ "node": "Rejected", "type": "main", "index": 0 }]
-      ]
+      "main": [[{ "node": "Publish to Instagram", "type": "main", "index": 0 }]]
     },
     "Publish to Instagram": {
       "main": [[{ "node": "Published!", "type": "main", "index": 0 }]]
