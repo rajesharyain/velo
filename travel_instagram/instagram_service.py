@@ -82,9 +82,30 @@ def publish_reel(
         if not creation_id:
             raise RuntimeError(f"Instagram: unexpected response (no id): {j1}")
 
-        delay = max(5.0, min(90.0, float(wait_after_create_sec)))
-        logger.info("Instagram: waiting %.0fs for reel container processing", delay)
-        time.sleep(delay)
+        # Poll until Instagram finishes processing the container (status = FINISHED)
+        url_status = f"https://graph.facebook.com/{GRAPH_VERSION}/{creation_id}?fields=status_code&access_token={token}"
+        max_wait = 180
+        poll_interval = 8
+        elapsed = 0
+        status_code = "IN_PROGRESS"
+        logger.info("Instagram: polling container status (max %ds)…", max_wait)
+        while elapsed < max_wait:
+            time.sleep(poll_interval)
+            elapsed += poll_interval
+            rs = client.get(url_status)
+            if rs.status_code < 400:
+                status_code = rs.json().get("status_code", "UNKNOWN")
+                logger.info("Instagram container status: %s (%ds elapsed)", status_code, elapsed)
+                if status_code == "FINISHED":
+                    break
+                if status_code in ("ERROR", "EXPIRED"):
+                    raise RuntimeError(f"Instagram container processing failed: {status_code}")
+
+        if status_code != "FINISHED":
+            raise RuntimeError(
+                f"Instagram container not ready after {max_wait}s (status={status_code}). "
+                "The video may be too large or the URL unreachable by Meta.",
+            )
 
         params_pub = {"creation_id": creation_id, "access_token": token}
         url_pub = f"{base}/media_publish?{urlencode(params_pub)}"
@@ -92,8 +113,5 @@ def publish_reel(
         if r2.status_code >= 400:
             msg = _graph_error_message(r2)
             logger.error("Instagram publish failed: %s", msg)
-            raise RuntimeError(
-                f"Instagram publish failed: {msg}. "
-                "If it says not ready yet, increase wait time or retry.",
-            )
+            raise RuntimeError(f"Instagram publish failed: {msg}")
         return r2.json()
