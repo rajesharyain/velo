@@ -557,7 +557,19 @@ async def ad_reels_library_page(request: Request) -> HTMLResponse:
     )
 
 
-_REELS_QUEUE_FILE = config.OUTPUT_DIR / "reels-queue.xlsx"
+def _resolve_queue_file() -> Path:
+    raw = getattr(config, "TRAVEL_PRICES_EXCEL_PATH", None)
+    if raw:
+        p = Path(raw)
+        # If the path exists as-is (native run), use it directly
+        if p.exists():
+            return p
+        # Inside Docker the host path won't resolve — use just the filename
+        # relative to the container's output dir (volume-mounted at OUTPUT_DIR)
+        return config.OUTPUT_DIR / p.name
+    return config.OUTPUT_DIR / "reels-queue.xlsx"
+
+_REELS_QUEUE_FILE = _resolve_queue_file()
 _QUEUE_COL_ALIASES: dict[str, list[str]] = {
     "destination": ["destination", "place", "query", "prompt", "location", "topic"],
     "status": ["status", "state"],
