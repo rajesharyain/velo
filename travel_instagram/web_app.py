@@ -700,14 +700,15 @@ async def excel_reels_mark_done(body: MarkDoneBody) -> JSONResponse:
 _IG_PREVIEWS_DIR = config.OUTPUT_DIR / "instagram_previews"
 
 _IG_CAPTION_SYSTEM = """\
-You are an expert travel storyteller, Instagram copywriter, and social media content strategist \
-with 18+ years of experience running viral travel accounts with millions of followers.
+You are an expert travel storyteller and Instagram content creator who has built viral travel accounts \
+with millions of followers. You write like a successful travel creator sharing personal recommendations \
+with a friend — conversational, emotionally authentic, inspiring, and never AI-sounding.
 
-Write as if sharing your own trip with a friend — friendly, exciting, conversational, inspiring, \
-and emotionally authentic. NEVER sound like a travel agency, tour guide, itinerary list, or AI.
+You will receive a destination and per-location descriptions (name, vibe, caption_text, caption). \
+Use these as your factual source — enhance the language but NEVER swap descriptions between locations \
+or invent facts not in the input.
 
-Return ONLY valid JSON (no markdown, no code fences, no extra text) with this exact structure:
-
+Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {
   "title": "",
   "caption": "",
@@ -715,45 +716,40 @@ Return ONLY valid JSON (no markdown, no code fences, no extra text) with this ex
   "keywords": ""
 }
 
-Rules:
+1. Title (40–70 characters, max 12 words, max 1 emoji)
+- Curiosity-driven and specific to this destination — never generic
+- Examples: "The Perfect 3-Day Kyoto Itinerary 🇯🇵", "Places in Rome You'll Wish You Found Sooner",
+  "Save This Paris Travel Guide for Your Next Trip 📍", "Don't Visit Bali Until You Know These Spots ✨"
 
-1. Title
-- 40–70 characters, maximum 12 words, maximum 1 emoji
-- Curiosity-driven and human-sounding (e.g. "This hidden gem changed how I travel ✨")
-- Never generic — make it feel personal and specific to the destination
+2. Caption (180–300 words, mobile-optimised)
+- Short paragraphs of 1–3 lines with blank lines between them
+- Build a FLOWING ITINERARY story using the provided place descriptions in order:
+    • Open with a strong scroll-stopping HOOK tied to the destination's mood or vibe
+    • Move naturally from one place to the next: "Start your morning at...", "Head next to...",
+      "By afternoon, make your way to...", "As the sun sets...", "Don't leave without..."
+    • For each featured place, weave in its specific vibe/description — a food rec, hidden detail,
+      best time to visit, or local tip that makes the reader think "I need to go here"
+    • Share a personal creator moment: a favourite memory, surprising discovery, or honest opinion
+    • End with a strong CTA: "Save this for your next trip 📌", "Tag someone you'd bring here 👇",
+      "Drop a comment if this is on your bucket list ✈️"
+- Natural emojis (~1 per 2–3 sentences) as visual breaks, never forced
+- NEVER use bullet points, numbered lists, or day-by-day headers
+- Use phrases like: "This place genuinely surprised me", "Easily one of my favourites",
+  "You honestly need to experience this", "I'd come back in a heartbeat"
 
-2. Caption (150–280 words, mobile-optimised)
-- Short paragraphs of 1–3 lines with blank lines between them for breathing room
-- Structure naturally:
-    • 🔥 Strong opening hook that stops the scroll
-    • 🌍 A flowing story — not a bullet list or itinerary
-    • 🍜 Weave in food/café/local experience recommendations naturally
-    • 📸 Mention a hidden gem or unexpected moment
-    • 🌅 Reference a best time of day / sunrise / sunset if relevant
-    • 💡 Drop 1–2 helpful travel tips inside the story
-    • ❤️ Share a personal opinion or favourite moment
-    • 📌 End with a strong CTA: save this, tag a friend, drop a comment
-- Use emojis naturally as visual breaks (~1 per 2–3 sentences), not forced
-- Use phrases like: "This place completely surprised me", "Easily one of my favourites",
-  "Save this for your next trip", "You honestly need to experience this once",
-  "I'd come back here in a heartbeat", "Trust me, the sunrise is worth it"
-- Naturally weave in destination-specific SEO keywords
-- NEVER use bullet points, numbered lists, or day-by-day structure
-
-3. Hashtags
-- Return exactly 10 hashtags as strings WITHOUT the # symbol
-- Mix: 3 niche, 4 medium-volume, 2 broad travel, 1 location-specific
-- No duplicates or irrelevant tags
+3. Hashtags (exactly 10, no # symbol)
+- Mix: 2–3 location-specific, 3 niche travel, 3 medium-volume, 1 broad reach, 1 mood/vibe
+- No duplicates
 
 4. Keywords
-- 10–20 Instagram SEO keywords as a single string separated by "|"
-- No "#" symbols, commas, or numbering
+- 10–20 SEO keywords as a single string separated by "|", no # symbols
 """
 
 
 class InstagramCaptionBody(BaseModel):
     destination: str = Field(..., min_length=1, max_length=500)
     places: list[str] = Field(default_factory=list)
+    place_descriptions: list[dict] = Field(default_factory=list)
     video_url: str = Field(default="")
 
 
@@ -785,13 +781,42 @@ async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured.")
 
     places_line = ", ".join(body.places) if body.places else body.destination
-    user_msg = (
-        f"Destination: {body.destination}\n"
-        f"Featured places/highlights in the reel: {places_line}\n\n"
-        "Write a viral Instagram caption for this travel reel. "
-        "Tell a story — not a list. Make it feel like a real traveller sharing their experience. "
-        "Use emojis naturally, keep paragraphs short, and end with a strong CTA."
-    )
+
+    if body.place_descriptions:
+        desc_lines = []
+        for pd in body.place_descriptions:
+            name = pd.get("name", "")
+            vibe = pd.get("vibe", "")
+            caption_text = pd.get("caption_text", "")
+            caption = pd.get("caption", "")
+            highlights = ", ".join(pd.get("highlights", [])[:3])
+            parts = [f"• {name}"]
+            if vibe:
+                parts.append(f"  Vibe: {vibe}")
+            if caption_text:
+                parts.append(f"  Hook: {caption_text}")
+            if caption:
+                parts.append(f"  Description: {caption}")
+            if highlights:
+                parts.append(f"  Highlights: {highlights}")
+            desc_lines.append("\n".join(parts))
+        descriptions_block = "\n\n".join(desc_lines)
+        user_msg = (
+            f"Destination: {body.destination}\n"
+            f"Featured locations (use these descriptions — do not invent new facts):\n\n"
+            f"{descriptions_block}\n\n"
+            "Write a viral Instagram caption that builds a flowing travel itinerary story using the above locations in order. "
+            "Enhance the language to feel like a travel creator's personal recommendation, but stay true to the descriptions provided. "
+            "Make the viewer think: 'I'm saving this for my next trip.'"
+        )
+    else:
+        user_msg = (
+            f"Destination: {body.destination}\n"
+            f"Featured places in the reel: {places_line}\n\n"
+            "Write a viral Instagram caption for this travel reel. "
+            "Tell a flowing itinerary story — not a list. Make it feel like a real traveller sharing their experience. "
+            "Use emojis naturally, keep paragraphs short, and end with a strong CTA."
+        )
 
     try:
         client = _Groq(api_key=key)
@@ -813,7 +838,7 @@ async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse
 
     title = str(data.get("title") or "").strip()
     caption = str(data.get("caption") or "").strip()
-    hashtags = [str(h).strip().lstrip("#") for h in (data.get("hashtags") or []) if str(h).strip()][:5]
+    hashtags = [str(h).strip().lstrip("#") for h in (data.get("hashtags") or []) if str(h).strip()][:10]
     keywords = str(data.get("keywords") or "").strip()
 
     hashtag_block = " ".join(f"#{h}" for h in hashtags)
