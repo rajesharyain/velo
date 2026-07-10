@@ -10,7 +10,7 @@ load_dotenv()
 
 GROQ_API_KEY: str | None = os.getenv("GROQ_API_KEY")
 PEXELS_API_KEY: str | None = os.getenv("PEXELS_API_KEY")
-GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 GROQ_CHAT_COMPLETIONS_URL: str = "https://api.groq.com/openai/v1/chat/completions"
 
 PEXELS_IMAGE_SEARCH: str = "https://api.pexels.com/v1/search"

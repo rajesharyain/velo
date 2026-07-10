@@ -7,6 +7,20 @@ from pydantic import BaseModel, Field, field_validator
 from app.models.media import MediaItem
 
 
+class SelectedClip(BaseModel):
+    """Best-scored media item chosen for reel assembly, one per place."""
+
+    place_name: str
+    title: str
+    url: str
+    type: Literal["image", "video"]
+    score: float = 0.0
+    width: int | None = None
+    height: int | None = None
+    best_query: str = ""
+    caption_text: str = ""
+
+
 class PlaceInput(BaseModel):
     """Single place as returned by Groq (before media fetch)."""
 
@@ -106,6 +120,7 @@ class TravelMediaRequest(BaseModel):
 
 class TravelMediaResponse(BaseModel):
     places: list[PlaceWithMedia]
+    selected_clips: list[SelectedClip] = Field(default_factory=list)
     groq_model: str | None = None
     pexels_calls_used: int = 0
     cache_hits: int = 0

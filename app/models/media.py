@@ -24,5 +24,6 @@ class MediaItem(BaseModel):
     photographer: str | None = None
     width: int | None = None
     height: int | None = None
+    score: float = 0.0
     tags: list[str] = Field(default_factory=list)
     local_path: str | None = None

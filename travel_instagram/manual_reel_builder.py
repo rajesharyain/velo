@@ -595,33 +595,6 @@ def _render_hook_overlay_png(
     pad_x = int(frame_w * 0.06)
     pad_y = int(frame_h * 0.022)
 
-    # Compute max line width for background box
-    max_line_w = max(
-        (_hook_token_line_width(draw, line, fonts) for line in lines),
-        default=0,
-    )
-    box_w = min(max_line_w + pad_x * 2, int(frame_w * 0.92))
-    box_h = block_h + pad_y * 2
-    box_x0 = int(cx - box_w / 2)
-    box_y0 = int(cy - box_h / 2)
-    box_x1 = box_x0 + box_w
-    box_y1 = box_y0 + box_h
-    radius = max(12, int(frame_h * 0.018))
-
-    # Draw semi-transparent dark background pill
-    draw.rounded_rectangle(
-        (box_x0, box_y0, box_x1, box_y1),
-        radius=radius,
-        fill=(0, 0, 0, 165),
-    )
-    # Thin yellow accent line on the left edge of the box
-    accent_w = max(4, int(frame_w * 0.006))
-    draw.rounded_rectangle(
-        (box_x0, box_y0, box_x0 + accent_w, box_y1),
-        radius=radius,
-        fill=_HOOK_FILL_YELLOW,
-    )
-
     stroke_n = max(1, int(round(fs * 0.7)))
     stroke_loc = max(2, int(round(fs * 1.1)))
     stroke_sh = max(2, int(round(fs * 1.0)))
@@ -774,33 +747,12 @@ def _render_caption_overlay(
     if body_lines:
         total_h += (block_gap if (title_lines or sub_lines) else 0) + bh
 
-    # Anchor text block at bottom third of frame (74% from top).
-    cy_line = int(h * 0.74)
+    # Anchor text block at bottom third of frame (~74% from top), shifted up 10px.
+    cy_line = int(h * 0.74) - 10
 
     title_stroke = max(2, int(round(font_scale * 1.5)))
     sub_stroke = max(1, int(round(font_scale * 1.1)))
     body_stroke = max(1, int(round(font_scale * 0.9)))
-
-    # ── Location badge behind title ───────────────────────────────────────
-    if title_lines:
-        badge_pad_x = int(w * 0.055)
-        badge_pad_y = int(h * 0.009)
-        title_line_sizes: list[tuple[int, int]] = []
-        for ln in title_lines:
-            bb = draw.textbbox((0, 0), ln, font=title_font)
-            title_line_sizes.append((bb[2] - bb[0], bb[3] - bb[1]))
-        max_lw = max(lw for lw, _ in title_line_sizes)
-        badge_block_h = sum(lh for _, lh in title_line_sizes) + max(0, len(title_lines) - 1) * line_gap
-        badge_x0 = (w - max_lw) // 2 - badge_pad_x
-        badge_y0 = cy_line - badge_pad_y
-        badge_x1 = (w + max_lw) // 2 + badge_pad_x
-        badge_y1 = cy_line + badge_block_h + badge_pad_y
-        badge_radius = max(10, int(h * 0.014))
-        draw.rounded_rectangle(
-            (badge_x0, badge_y0, badge_x1, badge_y1),
-            radius=badge_radius,
-            fill=(0, 0, 0, 160),
-        )
 
     for ln in title_lines:
         bb = draw.textbbox((0, 0), ln, font=title_font)

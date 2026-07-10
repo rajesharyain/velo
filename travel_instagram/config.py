@@ -23,8 +23,10 @@ IG_ACCESS_TOKEN: str | None = os.getenv("IG_ACCESS_TOKEN")
 # Must be set to an externally reachable URL, e.g. https://abc123.ngrok.io
 PUBLIC_APP_BASE_URL: str = (os.getenv("PUBLIC_APP_BASE_URL", "") or "").strip().rstrip("/")
 
-# Groq chat model — fast, JSON-friendly
-GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+# Groq chat model for the theme pipeline — llama-3.1-8b-instant has 3× higher
+# TPM limits on Groq free tier (20k vs 6k) with negligible quality difference
+# for structured JSON output. Override with GROQ_MODEL env var if needed.
+GROQ_MODEL: str = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # Optional reel soundtrack (used when no track is chosen in the UI / CLI)
 REEL_MUSIC_PATH: str | None = os.getenv("REEL_MUSIC_PATH")

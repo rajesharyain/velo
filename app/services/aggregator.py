@@ -20,6 +20,7 @@ from app.models.place import (
     PexelsSearchPlanItem,
     PlaceInput,
     PlaceWithMedia,
+    SelectedClip,
     TravelMediaResponse,
 )
 from app.services.groq_service import generate_places
@@ -148,6 +149,7 @@ def _merge_results(
                 photographer=m.photographer,
                 width=m.width,
                 height=m.height,
+                score=m.score,
                 tags=_infer_tags(m.url, place),
             )
             for m in merged
@@ -165,6 +167,38 @@ def _merge_results(
             )
         )
     return out
+
+
+def _base_title(place_name: str) -> str:
+    """Strip scene suffix after ' — ' so title is just the location."""
+    return place_name.split(" — ")[0].strip() if " — " in place_name else place_name
+
+
+def _select_best_clips(places: list[PlaceWithMedia]) -> list[SelectedClip]:
+    """Best video + best image per place (up to 2 per place, 10 total for 5 places).
+    Video is listed first so n8n assembles video→image alternating per destination."""
+    clips: list[SelectedClip] = []
+    for place in places:
+        if not place.media:
+            continue
+        title = _base_title(place.name)
+        videos = [m for m in place.media if m.type == "video"]
+        images = [m for m in place.media if m.type == "image"]
+        for chosen in filter(None, [videos[0] if videos else None, images[0] if images else None]):
+            clips.append(
+                SelectedClip(
+                    place_name=place.name,
+                    title=title,
+                    url=chosen.url,
+                    type=chosen.type,
+                    score=chosen.score,
+                    width=chosen.width,
+                    height=chosen.height,
+                    best_query=place.best_query,
+                    caption_text=place.caption_text,
+                )
+            )
+    return clips
 
 
 def _infer_tags(_url: str, place: PlaceInput) -> list[str]:
@@ -295,6 +329,7 @@ async def aggregate_travel_media(
 
     return TravelMediaResponse(
         places=merged,
+        selected_clips=_select_best_clips(merged),
         groq_model=config.GROQ_MODEL,
         pexels_calls_used=pexels_used,
         cache_hits=cache_hits,

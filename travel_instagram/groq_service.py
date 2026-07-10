@@ -4,9 +4,11 @@ Groq LLM integration: tourism guide JSON with scenery categories and Pexels-orie
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
+import time
 from typing import Any
 
 from groq import Groq
@@ -14,6 +16,16 @@ from groq import Groq
 from travel_instagram import config
 
 logger = logging.getLogger(__name__)
+
+# In-memory cache for generate_travel_content() — same theme+count skips the Groq call entirely.
+_CONTENT_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_CONTENT_CACHE_TTL: float = 6 * 3600  # 6 hours
+
+
+def _content_cache_key(theme: str, dest_count: int | None) -> str:
+    raw = f"{theme.strip().lower()}|{dest_count}"
+    return hashlib.md5(raw.encode()).hexdigest()
+
 
 def infer_requested_destination_count(theme: str) -> int | None:
     """
@@ -365,6 +377,14 @@ def generate_travel_content(
             f"The destinations array MUST contain between {dest_min} and {dest_max} objects (inclusive)."
         )
 
+    ck = _content_cache_key(theme_s, eff_n)
+    hit = _CONTENT_CACHE.get(ck)
+    if hit is not None:
+        ts, cached = hit
+        if time.monotonic() - ts < _CONTENT_CACHE_TTL:
+            logger.info("Groq cache hit for theme %r — skipping API call", theme_s)
+            return cached
+
     system_prompt = _travel_system_prompt(dest_min, dest_max)
     geo = infer_geo_focus_from_theme(theme_s)
     if geo:
@@ -418,6 +438,8 @@ def generate_travel_content(
         out["requested_destination_count"] = eff_n
     if geo:
         out["theme_geo_focus"] = geo
+
+    _CONTENT_CACHE[ck] = (time.monotonic(), out)
     return out
 
 

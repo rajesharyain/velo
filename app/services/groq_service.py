@@ -4,9 +4,11 @@ Groq: structured travel places JSON (strict schema for Pexels queries).
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
+import time
 from typing import Any
 
 import httpx
@@ -14,6 +16,13 @@ import httpx
 from app import config
 
 logger = logging.getLogger(__name__)
+
+_PLACES_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_PLACES_CACHE_TTL: float = 6 * 3600  # 6 hours
+
+
+def _places_cache_key(user_input: str) -> str:
+    return hashlib.md5(user_input.strip().lower().encode()).hexdigest()
 
 PLACES_SYSTEM_PROMPT = """You are a travel research assistant. Output ONLY valid JSON (no markdown, no commentary).
 
@@ -62,6 +71,14 @@ async def generate_places(user_input: str, *, client: httpx.AsyncClient) -> dict
     if not key:
         raise RuntimeError("GROQ_API_KEY is not set.")
 
+    ck = _places_cache_key(user_input)
+    hit = _PLACES_CACHE.get(ck)
+    if hit is not None:
+        ts, cached = hit
+        if time.monotonic() - ts < _PLACES_CACHE_TTL:
+            logger.info("Groq places cache hit for %r — skipping API call", user_input[:60])
+            return cached
+
     payload = {
         "model": config.GROQ_MODEL,
         "messages": [
@@ -98,4 +115,5 @@ async def generate_places(user_input: str, *, client: httpx.AsyncClient) -> dict
         logger.error("Groq JSON parse error: %s | snippet: %s", e, raw[:400])
         raise RuntimeError("Groq response was not valid JSON.") from e
 
+    _PLACES_CACHE[ck] = (time.monotonic(), parsed)
     return parsed
