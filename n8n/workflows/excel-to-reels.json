@@ -92,7 +92,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $input.first().json;\nconst pendingData = $('Get Next Pending Row').first().json;\nconst selectedClips = data.selected_clips || [];\n\nconst MIN_SECS = 17;\nconst MAX_SECS = 28;\nconst BASE_VIDEO_SECS = 3;\nconst BASE_IMAGE_SECS = 2;\n\nconst JAMENDO_TRACKS = [\n  'jamendo/1073214.mp3',\n  'jamendo/1222864.mp3',\n  'jamendo/1224662.mp3',\n  'jamendo/1317626.mp3',\n  'jamendo/14024.mp3',\n  'jamendo/1656722.mp3',\n  'jamendo/168834.mp3',\n  'jamendo/1738418.mp3',\n];\nconst music_track_id = JAMENDO_TRACKS[Math.floor(Math.random() * JAMENDO_TRACKS.length)];\n\nif (selectedClips.length === 0) throw new Error('No selected_clips in travel-media response');\n\nconst picked = selectedClips.map(clip => ({\n  source: 'url',\n  url: clip.url,\n  media_type: clip.type,\n  title: clip.title || '',\n  caption_text: clip.caption_text || '',\n}));\n\nconst videoCount = picked.filter(p => p.media_type === 'video').length;\nconst imageCount = picked.filter(p => p.media_type === 'image').length;\nconst baseDuration = videoCount * BASE_VIDEO_SECS + imageCount * BASE_IMAGE_SECS;\n\nlet clipVideo = BASE_VIDEO_SECS;\nlet clipImage = BASE_IMAGE_SECS;\n\nif (baseDuration < MIN_SECS) {\n  const scale = MIN_SECS / Math.max(baseDuration, 1);\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n} else if (baseDuration > MAX_SECS) {\n  const scale = MAX_SECS / baseDuration;\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n}\n\nconst estimatedDuration = videoCount * clipVideo + imageCount * clipImage;\n\nreturn [{\n  json: {\n    picked_items: picked,\n    clip_seconds_video: String(clipVideo),\n    clip_seconds_image: String(clipImage),\n    total_items: picked.length,\n    estimated_duration_secs: estimatedDuration,\n    music_track_id: music_track_id,\n    row_index: pendingData.row_index,\n    destination: pendingData.destination,\n  }\n}];"
+        "jsCode": "const data = $input.first().json;\nconst pendingData = $('Get Next Pending Row').first().json;\nconst selectedClips = data.selected_clips || [];\n\nconst MIN_SECS = 17;\nconst MAX_SECS = 28;\nconst BASE_VIDEO_SECS = 3;\nconst BASE_IMAGE_SECS = 2;\n\nconst JAMENDO_TRACKS = [\n  'jamendo/1073214.mp3',\n  'jamendo/1222864.mp3',\n  'jamendo/1224662.mp3',\n  'jamendo/1317626.mp3',\n  'jamendo/14024.mp3',\n  'jamendo/1656722.mp3',\n  'jamendo/168834.mp3',\n  'jamendo/1738418.mp3',\n];\nconst music_track_id = JAMENDO_TRACKS[Math.floor(Math.random() * JAMENDO_TRACKS.length)];\n\nif (selectedClips.length === 0) throw new Error('No selected_clips in travel-media response');\n\nconst picked = selectedClips.map(clip => ({\n  source: 'url',\n  url: clip.url,\n  media_type: clip.type,\n  title: clip.title || '',\n  caption_text: clip.caption_text || '',\n}));\n\nconst videoCount = picked.filter(p => p.media_type === 'video').length;\nconst imageCount = picked.filter(p => p.media_type === 'image').length;\nconst baseDuration = videoCount * BASE_VIDEO_SECS + imageCount * BASE_IMAGE_SECS;\n\nlet clipVideo = BASE_VIDEO_SECS;\nlet clipImage = BASE_IMAGE_SECS;\n\nif (baseDuration < MIN_SECS) {\n  const scale = MIN_SECS / Math.max(baseDuration, 1);\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n} else if (baseDuration > MAX_SECS) {\n  const scale = MAX_SECS / baseDuration;\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n}\n\nconst estimatedDuration = videoCount * clipVideo + imageCount * clipImage;\n\nreturn [{\n  json: {\n    picked_items: picked,\n    clip_seconds_video: String(clipVideo),\n    clip_seconds_image: String(clipImage),\n    total_items: picked.length,\n    estimated_duration_secs: estimatedDuration,\n    music_track_id: music_track_id,\n    hook_caption: data.user_query || '',\n    row_index: pendingData.row_index,\n    destination: pendingData.destination,\n  }\n}];"
       },
       "id": "pick-media",
       "name": "Pick Best Media Items",
@@ -135,6 +135,18 @@
             {
               "name": "show_branding",
               "value": "0"
+            },
+            {
+              "name": "hook_caption",
+              "value": "={{ $json.hook_caption }}"
+            },
+            {
+              "name": "hook_plain",
+              "value": "1"
+            },
+            {
+              "name": "hook_seconds",
+              "value": "2"
             }
           ]
         },

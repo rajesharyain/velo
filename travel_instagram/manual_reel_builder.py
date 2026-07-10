@@ -549,11 +549,12 @@ def _render_hook_overlay_png(
     frame_w: int,
     frame_h: int,
     show_branding: bool = True,
+    plain_mode: bool = False,
 ) -> Path:
     out_png.parent.mkdir(parents=True, exist_ok=True)
     img = Image.new("RGBA", (frame_w, frame_h), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
-    loc_keys = _hook_location_keywords(location_hint)
+    loc_keys = set() if plain_mode else _hook_location_keywords(location_hint)
     fs = max(0.6, min(1.7, float(font_scale)))
     max_w = int(frame_w * 0.82)
     line_gap = max(8, int(frame_h * 0.010))
@@ -606,16 +607,17 @@ def _render_hook_overlay_png(
         x = cx - total_w / 2.0
         baseline_y = y_cursor + line_asc
         for frag, sty in line:
-            f = fonts[sty]
-            sw = stroke_loc if sty == "location" else (stroke_sh if sty == "shout" else stroke_n)
-            fill = _HOOK_FILL_YELLOW if sty == "location" else _HOOK_FILL_WHITE
+            effective_sty = "normal" if plain_mode else sty
+            f = fonts[effective_sty]
+            sw = stroke_loc if effective_sty == "location" else (stroke_sh if effective_sty == "shout" else stroke_n)
+            fill = _HOOK_FILL_YELLOW if effective_sty == "location" else _HOOK_FILL_WHITE
             bb0 = draw.textbbox((0, 0), frag, font=f)
             y_draw = int(round(baseline_y + bb0[1]))
             xd = int(round(x))
             _draw_text_with_drop_shadow(draw, (xd, y_draw), frag, f, fill, stroke_w=sw)
             bb = draw.textbbox((xd, y_draw), frag, font=f)
             frag_w = bb[2] - bb[0]
-            if sty == "shout" and frag.strip() and not frag.isspace():
+            if not plain_mode and effective_sty == "shout" and frag.strip() and not frag.isspace():
                 und_y = bb[3] + max(2, int(frame_h * 0.004))
                 und_h = max(3, int(frame_h * 0.005 * fs))
                 draw.rounded_rectangle(
@@ -643,6 +645,7 @@ def _render_caption_overlay(
     font_scale: float = 1.0,
     hook_mode: bool = False,
     hook_location_hint: str = "",
+    hook_plain: bool = False,
     show_branding: bool = True,
     day_label: str = "",
 ) -> Path:
@@ -675,6 +678,7 @@ def _render_caption_overlay(
             frame_w=w,
             frame_h=h,
             show_branding=show_branding,
+            plain_mode=hook_plain,
         )
 
     # ── Day pill at top-right corner ──────────────────────────────────────
@@ -930,6 +934,7 @@ def build_manual_reel(
     hook_caption: str = "",
     hook_location_hint: str = "",
     hook_seconds: float = 3.0,
+    hook_plain: bool = False,
     image_segment_seconds: float = 3.0,
     video_segment_seconds: float = 5.0,
     show_branding: bool = True,
@@ -1084,7 +1089,8 @@ def build_manual_reel(
                     anchor_y=anchor[1],
                     font_scale=fs,
                     hook_mode=True,
-                    hook_location_hint=hook_location_hint or tit_i,
+                    hook_location_hint="" if hook_plain else (hook_location_hint or tit_i),
+                    hook_plain=hook_plain,
                     show_branding=show_branding,
                 )
                 hook_part = reel_work / f"seg_{i:02d}_hook.mp4"
