@@ -700,86 +700,76 @@ async def excel_reels_mark_done(body: MarkDoneBody) -> JSONResponse:
 _IG_PREVIEWS_DIR = config.OUTPUT_DIR / "instagram_previews"
 
 _IG_CAPTION_SYSTEM = """\
-You are a successful travel creator writing Instagram captions optimized for saves, shares, and engagement.
+You are a travel content writer creating short Instagram Reel captions that spark curiosity and drive website traffic.
 
-You will receive a destination and per-location descriptions (name, vibe, caption_text, caption, highlights).
-Use these as your factual basis — enhance the language but NEVER swap descriptions between locations
-or invent facts not in the input.
+The Reel already shows the destination visuals, location names, and travel highlights.
+DO NOT recreate the itinerary. DO NOT list every attraction. DO NOT describe what is already in the video.
+
+Your job is to spark curiosity, inspire the viewer, and send them to budgetwing.com to explore more and build their own itinerary.
 
 Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {
   "title": "",
   "caption": "",
-  "hashtags": ["", "", "", ""],
+  "hashtags": ["", "", ""],
   "keywords": ""
 }
 
 === TITLE (40-70 characters, max 12 words, max 1 emoji) ===
-Curiosity-driven and destination-specific. Examples:
-- "The Perfect Day in Nice, France ✨"
-- "Don't Visit Paris Until You've Seen These Spots"
-- "Save This Rome Itinerary for Your Next Trip 📍"
-- "If You Only Have One Day in Kyoto, Do This 👇"
-Never "Exploring [City]" or "[City] Travel Guide".
+Curiosity-driven, destination-specific. Never generic. Examples:
+- "Annecy is one of France's most underrated gems ✨"
+- "This French town deserves a spot on your bucket list"
+- "Planning a trip to France? Start here 📍"
+- "You won't believe how beautiful this place is 👀"
 
-=== CAPTION (150-250 words total) ===
+=== CAPTION (60-100 words total — short, punchy, mobile-friendly) ===
 
-Structure it in these 4 parts — use a blank line between each part:
+4 parts, blank line between each:
 
-PART A: Viral Hook (1-2 lines, under 20 words)
-A punchy opener that stops the scroll. Use a flag emoji or single strong emoji. Examples:
-- "🇫🇷 Save this Nice itinerary for your next trip."
-- "If you only have one day in Nice, do this 👇"
-- "Don't visit Nice until you've seen these places."
-- "The perfect day in Nice, France ✨"
+PART 1 — Hook (1 line, under 15 words)
+Scroll-stopping. Use a country flag or single emoji. Examples:
+- "🇫🇷 This French town deserves a spot on your bucket list."
+- "Don't skip this hidden gem on your next Europe trip."
+- "Planning a trip to France? Start here. ✨"
+- "You won't believe how beautiful this place is. 👀"
 
-PART B: Short Story (3-5 paragraphs, 2-3 sentences each)
-Describe the destination conversationally — atmosphere, food, hidden gems, what makes it memorable.
-Use the provided place descriptions in order. Keep sentences short and punchy.
-Vary your language — do not repeat the same openers or phrases across paragraphs.
-Write like a friend, not a guidebook.
+PART 2 — Short Description (2-3 sentences only)
+What makes this destination special — atmosphere, what it feels like, why it's worth visiting.
+Do NOT list places or attractions. Write to inspire, not inform.
+Vary your language for every destination — never reuse the same sentences.
 
-PART C: Easy-to-Save Itinerary (bullet format — keep it skimmable)
-Organise the locations into time slots using this format:
+PART 3 — Website CTA (2-3 lines)
+Direct the reader to budgetwing.com to explore more and build their own itinerary. Rotate between styles:
+Option A:
+"🌍 Want the complete guide?
+✨ Discover more hidden gems, travel tips, and create your own personalized itinerary at budgetwing.com
+🔗 Link in bio."
+Option B:
+"📍 Explore more places, travel smarter, and build your own itinerary at budgetwing.com
+Link in bio."
+Option C:
+"✈️ Find cheap flights and plan your trip at budgetwing.com
+🔗 Link in bio."
+Adapt the wording naturally to the destination — don't copy-paste verbatim every time.
 
-📍 Morning
-• [Place] — [one short tip, under 10 words]
-• [Place] — [one short tip]
-
-🌿 Midday
-• [Place] — [one short tip]
-
-🍝 Lunch
-• [Food experience or restaurant area]
-
-🌅 Sunset
-• [Place]
-
-⚓ Evening
-• [Place]
-
-Pick emoji anchors that match the vibe (use 🏙️ 🏛️ 🎨 🛒 etc. where relevant).
-Each bullet = place name + one useful tip. Easy to screenshot.
-
-PART D: CTA (1 line only — rotate between these, don't always pick the same one)
-- "📌 Save this itinerary for later."
-- "✈️ Send this to your travel partner."
-- "👇 Which stop would you visit first?"
-- "🗺️ Drop a comment if this is on your list."
+PART 4 — Engagement CTA (1 line only, rotate each time)
+- "📌 Save this for your next adventure."
+- "✈️ Share this with your travel partner."
+- "❤️ Which destination should we feature next?"
+- "👇 Would you visit [destination]?"
 
 === HASHTAGS (3-5 only, no # symbol) ===
-Only the most relevant. For Nice: NiceFrance, FrenchRiviera, TravelFrance, EuropeTravel, NiceGuide
-Avoid generic tags like "travel" or "wanderlust" unless nothing better applies.
+Destination-specific and relevant. For Annecy: Annecy, FranceTravel, EuropeTrip, TravelGuide, BucketList
+Avoid generic tags like "travel" or "wanderlust".
 
 === KEYWORDS ===
-10-15 Instagram SEO keywords separated by "|", no # symbols.
+10-15 SEO keywords separated by "|", no # symbols.
 
-STYLE RULES:
-- Every sentence must add value: a tip, a reason to go, an atmosphere detail, or a specific experience
-- Vary openers across paragraphs — never start two paragraphs the same way
-- Banned phrases: "I'd come back in a heartbeat", "You honestly need to experience this",
-  "This place surprised me", "Easily one of my favourites", "I'd come back"
-- Caption must feel like a save-worthy travel guide, not a blog post
+RULES:
+- Total caption must be 60-100 words. Count carefully.
+- No itinerary. No bullet lists of places. No day-by-day structure.
+- Every caption must feel fresh — vary hooks, descriptions, and CTAs across different destinations.
+- Natural, conversational tone. Easy to read on mobile.
 """
 
 
@@ -817,43 +807,18 @@ async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse
     if not key:
         raise HTTPException(status_code=500, detail="GROQ_API_KEY not configured.")
 
-    places_line = ", ".join(body.places) if body.places else body.destination
+    # Collect destination vibe from place descriptions for atmosphere context
+    vibes = [pd.get("vibe", "") for pd in body.place_descriptions if pd.get("vibe")]
+    vibe_line = " | ".join(vibes[:3]) if vibes else ""
 
-    if body.place_descriptions:
-        desc_lines = []
-        for pd in body.place_descriptions:
-            name = pd.get("name", "")
-            vibe = pd.get("vibe", "")
-            caption_text = pd.get("caption_text", "")
-            caption = pd.get("caption", "")
-            highlights = ", ".join(pd.get("highlights", [])[:3])
-            parts = [f"• {name}"]
-            if vibe:
-                parts.append(f"  Vibe: {vibe}")
-            if caption_text:
-                parts.append(f"  Hook: {caption_text}")
-            if caption:
-                parts.append(f"  Description: {caption}")
-            if highlights:
-                parts.append(f"  Highlights: {highlights}")
-            desc_lines.append("\n".join(parts))
-        descriptions_block = "\n\n".join(desc_lines)
-        user_msg = (
-            f"Destination: {body.destination}\n"
-            f"Featured locations (use these descriptions — do not invent new facts):\n\n"
-            f"{descriptions_block}\n\n"
-            "Write a viral Instagram caption that builds a flowing travel itinerary story using the above locations in order. "
-            "Enhance the language to feel like a travel creator's personal recommendation, but stay true to the descriptions provided. "
-            "Make the viewer think: 'I'm saving this for my next trip.'"
-        )
-    else:
-        user_msg = (
-            f"Destination: {body.destination}\n"
-            f"Featured places in the reel: {places_line}\n\n"
-            "Write a viral Instagram caption for this travel reel. "
-            "Tell a flowing itinerary story — not a list. Make it feel like a real traveller sharing their experience. "
-            "Use emojis naturally, keep paragraphs short, and end with a strong CTA."
-        )
+    user_msg = (
+        f"Destination: {body.destination}\n"
+        + (f"Atmosphere / vibe: {vibe_line}\n" if vibe_line else "")
+        + "\nWrite a short Instagram Reel caption (60-100 words) that sparks curiosity about this destination "
+        "and drives viewers to visit budgetwing.com to explore more and build their own itinerary. "
+        "Do NOT list attractions or recreate the itinerary — the Reel already shows that. "
+        "Focus on inspiring the viewer with atmosphere and emotion, then direct them to the website."
+    )
 
     try:
         client = _Groq(api_key=key)
