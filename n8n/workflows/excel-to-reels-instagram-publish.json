@@ -373,7 +373,7 @@
         160
       ],
       "continueOnFail": true,
-      "disabled": true
+      "disabled": false
     },
     {
       "parameters": {
@@ -392,7 +392,7 @@
         360
       ],
       "continueOnFail": true,
-      "disabled": true
+      "disabled": false
     },
     {
       "parameters": {
