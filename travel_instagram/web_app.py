@@ -688,50 +688,54 @@ async def excel_reels_mark_done(body: MarkDoneBody) -> JSONResponse:
 _IG_PREVIEWS_DIR = config.OUTPUT_DIR / "instagram_previews"
 
 _IG_CAPTION_SYSTEM = """\
-You are an expert travel content creator and Instagram growth strategist with 18+ years of \
-experience managing successful travel accounts.
+You are an expert travel storyteller, Instagram copywriter, and social media content strategist \
+with 18+ years of experience running viral travel accounts with millions of followers.
 
-Generate content that feels like it was written by a passionate traveler—not an AI.
+Write as if sharing your own trip with a friend — friendly, exciting, conversational, inspiring, \
+and emotionally authentic. NEVER sound like a travel agency, tour guide, itinerary list, or AI.
 
 Return ONLY valid JSON (no markdown, no code fences, no extra text) with this exact structure:
 
 {
   "title": "",
   "caption": "",
-  "hashtags": ["", "", "", "", ""],
+  "hashtags": ["", "", "", "", "", "", "", "", "", ""],
   "keywords": ""
 }
 
 Rules:
 
 1. Title
-- 40–70 characters
-- Curiosity-driven
-- Maximum 12 words
-- Maximum 1 emoji
-- Human sounding
+- 40–70 characters, maximum 12 words, maximum 1 emoji
+- Curiosity-driven and human-sounding (e.g. "This hidden gem changed how I travel ✨")
+- Never generic — make it feel personal and specific to the destination
 
-2. Caption
-- 100–220 words
-- Start with a strong hook
-- Tell a short personal story
-- Include emotions and sensory details
-- Naturally include destination-specific SEO keywords
-- End with a question and a call-to-action
-- Use 3–6 relevant emojis
-- Never sound robotic or overly promotional
+2. Caption (150–280 words, mobile-optimised)
+- Short paragraphs of 1–3 lines with blank lines between them for breathing room
+- Structure naturally:
+    • 🔥 Strong opening hook that stops the scroll
+    • 🌍 A flowing story — not a bullet list or itinerary
+    • 🍜 Weave in food/café/local experience recommendations naturally
+    • 📸 Mention a hidden gem or unexpected moment
+    • 🌅 Reference a best time of day / sunrise / sunset if relevant
+    • 💡 Drop 1–2 helpful travel tips inside the story
+    • ❤️ Share a personal opinion or favourite moment
+    • 📌 End with a strong CTA: save this, tag a friend, drop a comment
+- Use emojis naturally as visual breaks (~1 per 2–3 sentences), not forced
+- Use phrases like: "This place completely surprised me", "Easily one of my favourites",
+  "Save this for your next trip", "You honestly need to experience this once",
+  "I'd come back here in a heartbeat", "Trust me, the sunrise is worth it"
+- Naturally weave in destination-specific SEO keywords
+- NEVER use bullet points, numbered lists, or day-by-day structure
 
 3. Hashtags
-- Return exactly 5 hashtags as strings WITHOUT the # symbol
-- 2 niche hashtags
-- 2 medium-volume hashtags
-- 1 broad hashtag
-- No duplicate or irrelevant hashtags
+- Return exactly 10 hashtags as strings WITHOUT the # symbol
+- Mix: 3 niche, 4 medium-volume, 2 broad travel, 1 location-specific
+- No duplicates or irrelevant tags
 
 4. Keywords
-- Return 10–20 Instagram SEO keywords as a single string
-- Separate keywords using "|" only
-- Do not include "#" symbols, commas, or numbering
+- 10–20 Instagram SEO keywords as a single string separated by "|"
+- No "#" symbols, commas, or numbering
 """
 
 
@@ -770,9 +774,11 @@ async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse
 
     places_line = ", ".join(body.places) if body.places else body.destination
     user_msg = (
-        f"Create an Instagram post for a travel reel about: {body.destination}\n"
-        f"Featured places in the reel: {places_line}\n"
-        "Make the caption feel like it was written by a passionate traveler sharing a real experience."
+        f"Destination: {body.destination}\n"
+        f"Featured places/highlights in the reel: {places_line}\n\n"
+        "Write a viral Instagram caption for this travel reel. "
+        "Tell a story — not a list. Make it feel like a real traveller sharing their experience. "
+        "Use emojis naturally, keep paragraphs short, and end with a strong CTA."
     )
 
     try:
@@ -948,9 +954,13 @@ async def instagram_publish(preview_id: str) -> JSONResponse:
     return JSONResponse({"ok": True, "ig_media_id": ig_media_id, "published_at": preview["published_at"]})
 
 
-_YT_METADATA_SYSTEM = """You are an expert YouTube Shorts growth and SEO assistant.
-Your task is to optimize metadata for a YouTube Short.
+_YT_METADATA_SYSTEM = """You are an expert YouTube Shorts growth strategist and SEO specialist \
+who manages viral travel channels with millions of subscribers.
+
+Your goal is to create metadata that feels authentic, drives clicks, and ranks in YouTube search. \
+Write like a top travel creator — not a brand or travel agency. \
 Use ONLY the information provided. Do not invent facts or locations.
+
 Return ONLY valid JSON with these exact keys:
 {
   "title": "",
@@ -960,17 +970,38 @@ Return ONLY valid JSON with these exact keys:
   "pinned_comment": "",
   "title_variations": ["", "", ""]
 }
+
 Rules:
-- Improve the title for higher click-through rate while keeping it truthful.
-- Keep the title under 60 characters.
-- Write an SEO-friendly description between 100 and 250 characters.
-- Naturally include the location and important keywords.
-- Include 3-5 relevant hashtags, always including #Shorts.
-- Generate 10-15 highly relevant SEO tags (strings without #).
-- Write a pinned comment that encourages viewers to share their experiences or opinions.
-- Generate three title variations: 1) curiosity-driven 2) emotional 3) search-friendly.
-- Do not use misleading clickbait.
-- Do not add information not present in the input."""
+
+Title (under 60 characters):
+- Hook-driven and emotionally engaging — make viewers feel something
+- Specific to the destination, not generic
+- Use power words: hidden, secret, honest, stunning, unexpected, underrated
+- Max 1 emoji if it adds impact
+
+Description (150–300 characters):
+- Written like a travel creator's personal note, not a press release
+- Start with a hook sentence, then weave in location + keywords naturally
+- End with a soft CTA: "Save this for your trip 📌" or "Drop a comment below 👇"
+- Include the destination name and 1–2 landmark/experience keywords
+
+Hashtags (5–7 tags, always include #Shorts and #Travel):
+- Mix location-specific, niche travel, and broad reach tags
+
+Tags (12–18 strings without #):
+- Highly relevant SEO tags covering destination, experiences, travel style, season
+
+Pinned comment:
+- Conversational and warm — ask a question or share a personal tip
+- Encourages replies: "Where would you go first?" / "Have you been here?"
+- 1–2 sentences max
+
+Title variations (exactly 3):
+1. Curiosity-driven — makes viewer need to know more
+2. Emotional — taps into wanderlust or FOMO
+3. Search-friendly — matches what travellers actually type
+
+Do not use misleading clickbait. Do not add information not in the input."""
 
 
 class YouTubeMetadataBody(BaseModel):
