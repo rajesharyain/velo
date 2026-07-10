@@ -96,7 +96,7 @@ class PexelsSearchPlanItem(BaseModel):
 class TravelMediaRequest(BaseModel):
     query: str = Field(..., min_length=1, max_length=2000)
     """Optional extra tags appended to each search (e.g. beach, architecture)."""
-    tags: list[str] = Field(default_factory=list, max_length=8)
+    tags: list[str] = Field(default_factory=list, max_length=30)
     download: bool = False
     orientation: str | None = Field(
         default=None,
