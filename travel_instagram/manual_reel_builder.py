@@ -689,16 +689,16 @@ def _render_caption_overlay(
     # ── Text fonts ────────────────────────────────────────────────────────
     title_font = _try_overlay_font_stack(
         _TITLE_FONT_STACK,
-        int(h * 0.034 * font_scale),
+        int(h * 0.052 * font_scale),
         system_bold_fallback=True,
     )
     sub_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.020 * font_scale),
+        int(h * 0.030 * font_scale),
     )
     body_font = _try_overlay_font_stack(
         _BODY_FONT_STACK,
-        int(h * 0.016 * font_scale),
+        int(h * 0.024 * font_scale),
     )
 
     pad_x = int(w * 0.072)
@@ -1036,7 +1036,7 @@ def build_manual_reel(
             anchor_y=anchor[1],
             font_scale=fs,
             show_branding=show_branding,
-            day_label=f"DAY {i + 1}" if tit_i else "",
+            day_label="",
         )
         prev_overlay_title = tit_i
         prev_caption_text = sub_i
