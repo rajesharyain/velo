@@ -109,7 +109,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const data = $input.first().json;\nconst pendingData = $('Get Next Pending Row').first().json;\nconst selectedClips = data.selected_clips || [];\n\nconst MIN_SECS = 17;\nconst MAX_SECS = 28;\nconst BASE_VIDEO_SECS = 3;\nconst BASE_IMAGE_SECS = 2;\n\nif (selectedClips.length === 0) throw new Error('No selected_clips in travel-media response');\n\nconst picked = selectedClips.map(clip => ({\n  source: 'url',\n  url: clip.url,\n  media_type: clip.type,\n}));\n\nconst videoCount = picked.filter(p => p.media_type === 'video').length;\nconst imageCount = picked.filter(p => p.media_type === 'image').length;\nconst baseDuration = videoCount * BASE_VIDEO_SECS + imageCount * BASE_IMAGE_SECS;\n\nlet clipVideo = BASE_VIDEO_SECS;\nlet clipImage = BASE_IMAGE_SECS;\n\nif (baseDuration < MIN_SECS) {\n  const scale = MIN_SECS / Math.max(baseDuration, 1);\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n} else if (baseDuration > MAX_SECS) {\n  const scale = MAX_SECS / baseDuration;\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n}\n\nconst estimatedDuration = videoCount * clipVideo + imageCount * clipImage;\n\nreturn [{\n  json: {\n    picked_items: picked,\n    clip_seconds_video: String(clipVideo),\n    clip_seconds_image: String(clipImage),\n    total_items: picked.length,\n    estimated_duration_secs: estimatedDuration,\n    row_index: pendingData.row_index,\n    destination: pendingData.destination,\n  }\n}];"
+        "jsCode": "const data = $input.first().json;\nconst pendingData = $('Get Next Pending Row').first().json;\nconst selectedClips = data.selected_clips || [];\n\nconst MIN_SECS = 17;\nconst MAX_SECS = 28;\nconst BASE_VIDEO_SECS = 3;\nconst BASE_IMAGE_SECS = 2;\n\nif (selectedClips.length === 0) throw new Error('No selected_clips in travel-media response');\n\nconst picked = selectedClips.map(clip => ({\n  source: 'url',\n  url: clip.url,\n  media_type: clip.type,\n  title: clip.title || '',\n  caption_text: clip.caption_text || '',\n}));\n\nconst videoCount = picked.filter(p => p.media_type === 'video').length;\nconst imageCount = picked.filter(p => p.media_type === 'image').length;\nconst baseDuration = videoCount * BASE_VIDEO_SECS + imageCount * BASE_IMAGE_SECS;\n\nlet clipVideo = BASE_VIDEO_SECS;\nlet clipImage = BASE_IMAGE_SECS;\n\nif (baseDuration < MIN_SECS) {\n  const scale = MIN_SECS / Math.max(baseDuration, 1);\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n} else if (baseDuration > MAX_SECS) {\n  const scale = MAX_SECS / baseDuration;\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n}\n\nconst estimatedDuration = videoCount * clipVideo + imageCount * clipImage;\n\nreturn [{\n  json: {\n    picked_items: picked,\n    clip_seconds_video: String(clipVideo),\n    clip_seconds_image: String(clipImage),\n    total_items: picked.length,\n    estimated_duration_secs: estimatedDuration,\n    hook_caption: data.user_query || '',\n    row_index: pendingData.row_index,\n    destination: pendingData.destination,\n  }\n}];"
       },
       "id": "pick-media",
       "name": "Pick Best Media Items",
@@ -181,6 +181,22 @@
             {
               "name": "show_branding",
               "value": "0"
+            },
+            {
+              "name": "hook_caption",
+              "value": "={{ $('Pick Best Media Items').item.json.hook_caption }}"
+            },
+            {
+              "name": "hook_seconds",
+              "value": "2"
+            },
+            {
+              "name": "hook_location_hint",
+              "value": "={{ $('Pick Best Media Items').item.json.destination }}"
+            },
+            {
+              "name": "hook_plain",
+              "value": "1"
             }
           ]
         },
@@ -212,7 +228,7 @@
         },
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={\n  \"destination\": \"{{ $('Pick Best Media Items').item.json.destination }}\",\n  \"places\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_names || []) }},\n  \"video_url\": \"{{ $json.video_url || '' }}\"\n}",
+        "jsonBody": "={\n  \"destination\": \"{{ $('Pick Best Media Items').item.json.destination }}\",\n  \"places\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_names || []) }},\n  \"place_descriptions\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_descriptions || []) }},\n  \"video_url\": \"{{ $json.video_url || '' }}\"\n}",
         "options": {
           "timeout": 60000
         }
@@ -356,7 +372,8 @@
         3100,
         160
       ],
-      "continueOnFail": true
+      "continueOnFail": true,
+      "disabled": true
     },
     {
       "parameters": {
@@ -374,11 +391,12 @@
         3100,
         360
       ],
-      "continueOnFail": true
+      "continueOnFail": true,
+      "disabled": true
     },
     {
       "parameters": {
-        "jsCode": "const previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nlet igMediaId = '\u2014', igStatus = 'unknown';\nlet ytUrl = '\u2014', ytVideoId = '\u2014', ytStatus = 'unknown';\n\ntry {\n  const igResult = $('Publish to Instagram').first().json;\n  igMediaId = igResult.ig_media_id || igResult.detail || igResult.error?.message || '\u2014';\n  igStatus = igResult.ig_media_id ? 'ok' : 'failed';\n} catch (e) {\n  igStatus = 'error: ' + e.message;\n}\n\ntry {\n  const ytResult = $('Publish to YouTube Shorts').first().json;\n  ytVideoId = ytResult.youtube_video_id || '\u2014';\n  ytUrl = ytResult.youtube_url || ytResult.detail || ytResult.error?.message || '\u2014';\n  ytStatus = ytResult.youtube_video_id ? 'ok' : 'failed';\n} catch (e) {\n  ytStatus = 'error: ' + e.message;\n}\n\nconsole.log('\\n\ud83c\udf89 PUBLISHED!');\nconsole.log('Instagram Preview :', previewUrl);\nconsole.log('IG Media ID       :', igMediaId, '(' + igStatus + ')');\nconsole.log('YouTube Shorts URL:', ytUrl);\nconsole.log('YouTube Video ID  :', ytVideoId, '(' + ytStatus + ')');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igMediaId !== '\u2014' ? igMediaId : '',\n  ig_status: igStatus,\n  youtube_video_id: ytVideoId !== '\u2014' ? ytVideoId : '',\n  youtube_url: ytUrl !== '\u2014' ? ytUrl : '',\n  yt_status: ytStatus,\n} }];\n"
+        "jsCode": "const previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nlet igMediaId = '\u2014', igStatus = 'unknown';\nlet ytVideoId = '\u2014', ytStatus = 'unknown';\n\ntry {\n  const igResult = $('Publish to Instagram').first().json;\n  igMediaId = igResult.ig_media_id || igResult.detail || igResult.error?.message || '\u2014';\n  igStatus = igResult.ig_media_id ? 'ok' : 'failed';\n} catch (e) {\n  igStatus = 'error: ' + e.message;\n}\n\ntry {\n  const ytResult = $('Publish to YouTube Shorts').first().json;\n  ytVideoId = ytResult.youtube_video_id || ytResult.id || ytResult.detail || '\u2014';\n  ytStatus = ytResult.youtube_video_id || ytResult.id ? 'ok' : 'failed';\n} catch (e) {\n  ytStatus = 'error: ' + e.message;\n}\n\nconsole.log('\\n\ud83c\udf89 PUBLISHED!');\nconsole.log('Preview URL  :', previewUrl);\nconsole.log('IG Media ID  :', igMediaId, '(' + igStatus + ')');\nconsole.log('YT Video ID  :', ytVideoId, '(' + ytStatus + ')');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igMediaId !== '\u2014' ? igMediaId : '',\n  ig_status: igStatus,\n  yt_video_id: ytVideoId !== '\u2014' ? ytVideoId : '',\n  yt_status: ytStatus,\n} }];"
       },
       "id": "published-log",
       "name": "Published!",
@@ -593,7 +611,7 @@
       ]
     }
   },
-  "settings": {},
-  "staticData": null,
-  "pinData": {}
+  "settings": {
+    "executionOrder": "v1"
+  }
 }
