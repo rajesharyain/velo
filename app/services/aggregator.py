@@ -31,12 +31,24 @@ logger = logging.getLogger(__name__)
 MediaKind = Literal["image", "video"]
 
 
-def _augment_query(query: str, tags: list[str]) -> str:
+_MAX_PEXELS_QUERY_LEN = 80
+
+
+def _augment_query(query: str, tags: list[str], *, skip_tags: bool = False) -> str:
     q = " ".join((query or "").split()).strip()
-    extra = " ".join(t.strip() for t in tags if t and str(t).strip())
-    if not extra:
-        return q
-    return f"{q} {extra}".strip()
+    if not tags or skip_tags:
+        return q[:_MAX_PEXELS_QUERY_LEN]
+    # Append tags one-by-one until we'd exceed the length cap
+    result = q
+    for t in tags:
+        t = t.strip()
+        if not t:
+            continue
+        candidate = f"{result} {t}"
+        if len(candidate) > _MAX_PEXELS_QUERY_LEN:
+            break
+        result = candidate
+    return result
 
 
 def _query_pool(place: PlaceInput) -> list[str]:
@@ -174,17 +186,31 @@ def _base_title(place_name: str) -> str:
     return place_name.split(" — ")[0].strip() if " — " in place_name else place_name
 
 
-def _select_best_clips(places: list[PlaceWithMedia]) -> list[SelectedClip]:
-    """Best video + best image per place (up to 2 per place, 10 total for 5 places).
-    Video is listed first so n8n assembles video→image alternating per destination."""
+def _select_best_clips(
+    places: list[PlaceWithMedia],
+    best_query_buckets: dict[int, list[MediaRecord]],
+) -> list[SelectedClip]:
+    """Best video + best image per place, preferring media from best_query for title accuracy.
+    Falls back to the full merged pool only when best_query returned nothing for that type."""
     clips: list[SelectedClip] = []
-    for place in places:
+    for pi, place in enumerate(places):
         if not place.media:
             continue
         title = _base_title(place.name)
-        videos = [m for m in place.media if m.type == "video"]
-        images = [m for m in place.media if m.type == "image"]
-        for chosen in filter(None, [videos[0] if videos else None, images[0] if images else None]):
+
+        # Records specifically from best_query — tightest visual match to the place name
+        bq = sorted(best_query_buckets.get(pi, []), key=lambda r: r.score, reverse=True)
+        bq_videos = [r for r in bq if r.type == "video"]
+        bq_images = [r for r in bq if r.type == "image"]
+
+        # Full merged pool as fallback (already score-sorted)
+        all_videos = [m for m in place.media if m.type == "video"]
+        all_images = [m for m in place.media if m.type == "image"]
+
+        chosen_video = bq_videos[0] if bq_videos else (all_videos[0] if all_videos else None)
+        chosen_image = bq_images[0] if bq_images else (all_images[0] if all_images else None)
+
+        for chosen in filter(None, [chosen_video, chosen_image]):
             clips.append(
                 SelectedClip(
                     place_name=place.name,
@@ -273,7 +299,8 @@ async def aggregate_travel_media(
         spec: tuple[int, str, MediaKind],
     ) -> tuple[int, list[MediaRecord], bool]:
         place_idx, q, mt = spec
-        aq = _augment_query(q, tags)
+        is_best = q == places[place_idx].best_query
+        aq = _augment_query(q, tags, skip_tags=is_best)
         recs, cached = await search_media(client, aq, mt, orientation=orient)
         return place_idx, recs, cached
 
@@ -283,17 +310,21 @@ async def aggregate_travel_media(
     )
 
     flat: list[tuple[int, list[MediaRecord]]] = []
+    best_query_buckets: dict[int, list[MediaRecord]] = {}
     cache_hits = 0
     pexels_used = 0
     for spec, res in zip(task_specs, results):
         if isinstance(res, Exception):
             logger.warning("Pexels task failed: %s", res)
             continue
+        spec_pi, spec_q, _spec_mt = spec
         pi, recs, cch = res
         flat.append((pi, recs))
         pexels_used += 1
         if cch:
             cache_hits += 1
+        if spec_q == places[spec_pi].best_query:
+            best_query_buckets.setdefault(pi, []).extend(recs)
 
     merged = _merge_results(places, flat, config.MEDIA_PER_PLACE_MAX)
 
@@ -329,7 +360,7 @@ async def aggregate_travel_media(
 
     return TravelMediaResponse(
         places=merged,
-        selected_clips=_select_best_clips(merged),
+        selected_clips=_select_best_clips(merged, best_query_buckets),
         groq_model=config.GROQ_MODEL,
         pexels_calls_used=pexels_used,
         cache_hits=cache_hits,

@@ -47,7 +47,7 @@ Hard rules:
 - "caption_text": required on every place. Hard cap 12-15 words. Open with a hook that makes viewers stop scrolling; keep language simple and emotional. Never write a travel-guide paragraph. Do not repeat the place name only; do not paste search keywords. This appears on-video under the location title.
 - Each place must have 4 to 6 strings in "queries" (inclusive). "best_query" is separate and MUST NOT be duplicated inside "queries".
 - Every query string must: include the place or area name (or unambiguous local name), mention a landmark OR vibe from highlights OR a visual scene, and include at least one visual keyword when natural (e.g. sunset, aerial, drone, waterfront, night, historic, coastline, architecture).
-- "best_query" should be the single strongest 4–10 word English stock-search line for that place (location + iconic visual).
+- "best_query" CRITICAL RULE: MUST contain the exact place name or landmark name. It is the PRIMARY Pexels search — the reel title shown to viewers comes from this place's name, so the media returned MUST visually match. Forbidden: generic country/region terms alone (e.g. "Ireland coastal landscape" for Cliffs of Moher). Required: the specific place name + one strong visual scene (e.g. "Cliffs of Moher aerial view Ireland", "Alhambra palace Granada Spain", "Ha Long Bay limestone karsts Vietnam"). If the place IS a city, include its most iconic landmark or district (e.g. "Dublin city Temple Bar night" not just "Dublin Ireland").
 - "highlights": 3 to 6 short phrases per place.
 - Use ASCII-friendly punctuation in JSON strings; escape double quotes inside strings.
 - Types: prefer "city" for cities, "region" for areas like Algarve, "island" for islands, "landmark_area" for compact historic quarters.
