@@ -190,7 +190,7 @@ class AdReelsLibrarySaveBody(BaseModel):
     mode: Literal["all", "selected"] = "selected"
     selected_urls: list[str] = Field(default_factory=list, max_length=80)
     query: str = Field(default="", max_length=2000)
-    tags: list[str] = Field(default_factory=list, max_length=8)
+    tags: list[str] = Field(default_factory=list, max_length=30)
     orientation: str | None = Field(default=None, max_length=32)
     places: list[dict[str, Any]] = Field(default_factory=list)
     groq_places: list[dict[str, Any]] = Field(default_factory=list)
