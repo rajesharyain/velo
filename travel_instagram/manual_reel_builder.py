@@ -774,24 +774,45 @@ def _render_caption_overlay(
     if body_lines:
         total_h += (block_gap if (title_lines or sub_lines) else 0) + bh
 
-    # Anchor text block top at 35% of frame height.
-    cy_line = int(h * 0.35)
+    # Anchor text block at bottom third of frame (74% from top).
+    cy_line = int(h * 0.74)
 
     title_stroke = max(2, int(round(font_scale * 1.5)))
     sub_stroke = max(1, int(round(font_scale * 1.1)))
     body_stroke = max(1, int(round(font_scale * 0.9)))
 
+    # ── Location badge behind title ───────────────────────────────────────
+    if title_lines:
+        badge_pad_x = int(w * 0.055)
+        badge_pad_y = int(h * 0.009)
+        title_line_sizes: list[tuple[int, int]] = []
+        for ln in title_lines:
+            bb = draw.textbbox((0, 0), ln, font=title_font)
+            title_line_sizes.append((bb[2] - bb[0], bb[3] - bb[1]))
+        max_lw = max(lw for lw, _ in title_line_sizes)
+        badge_block_h = sum(lh for _, lh in title_line_sizes) + max(0, len(title_lines) - 1) * line_gap
+        badge_x0 = (w - max_lw) // 2 - badge_pad_x
+        badge_y0 = cy_line - badge_pad_y
+        badge_x1 = (w + max_lw) // 2 + badge_pad_x
+        badge_y1 = cy_line + badge_block_h + badge_pad_y
+        badge_radius = max(10, int(h * 0.014))
+        draw.rounded_rectangle(
+            (badge_x0, badge_y0, badge_x1, badge_y1),
+            radius=badge_radius,
+            fill=(0, 0, 0, 160),
+        )
+
     for ln in title_lines:
         bb = draw.textbbox((0, 0), ln, font=title_font)
         lw = bb[2] - bb[0]
         lx = (w - lw) // 2
-        draw.text(
+        _draw_text_with_drop_shadow(
+            draw,
             (lx, cy_line),
             ln,
-            font=title_font,
-            fill=(255, 255, 255, 255),
-            stroke_width=title_stroke,
-            stroke_fill=(0, 0, 0, 180),
+            title_font,
+            (255, 255, 255, 255),
+            stroke_w=title_stroke,
         )
         cy_line += (bb[3] - bb[1]) + line_gap
 
