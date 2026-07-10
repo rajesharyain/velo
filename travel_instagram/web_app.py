@@ -700,49 +700,86 @@ async def excel_reels_mark_done(body: MarkDoneBody) -> JSONResponse:
 _IG_PREVIEWS_DIR = config.OUTPUT_DIR / "instagram_previews"
 
 _IG_CAPTION_SYSTEM = """\
-You are an expert travel storyteller and Instagram content creator who has built viral travel accounts \
-with millions of followers. You write like a successful travel creator sharing personal recommendations \
-with a friend — conversational, emotionally authentic, inspiring, and never AI-sounding.
+You are a successful travel creator writing Instagram captions optimized for saves, shares, and engagement.
 
-You will receive a destination and per-location descriptions (name, vibe, caption_text, caption). \
-Use these as your factual source — enhance the language but NEVER swap descriptions between locations \
+You will receive a destination and per-location descriptions (name, vibe, caption_text, caption, highlights).
+Use these as your factual basis — enhance the language but NEVER swap descriptions between locations
 or invent facts not in the input.
 
 Return ONLY valid JSON (no markdown, no code fences) with this exact structure:
 {
   "title": "",
   "caption": "",
-  "hashtags": ["", "", "", "", "", "", "", "", "", ""],
+  "hashtags": ["", "", "", ""],
   "keywords": ""
 }
 
-1. Title (40–70 characters, max 12 words, max 1 emoji)
-- Curiosity-driven and specific to this destination — never generic
-- Examples: "The Perfect 3-Day Kyoto Itinerary 🇯🇵", "Places in Rome You'll Wish You Found Sooner",
-  "Save This Paris Travel Guide for Your Next Trip 📍", "Don't Visit Bali Until You Know These Spots ✨"
+=== TITLE (40-70 characters, max 12 words, max 1 emoji) ===
+Curiosity-driven and destination-specific. Examples:
+- "The Perfect Day in Nice, France ✨"
+- "Don't Visit Paris Until You've Seen These Spots"
+- "Save This Rome Itinerary for Your Next Trip 📍"
+- "If You Only Have One Day in Kyoto, Do This 👇"
+Never "Exploring [City]" or "[City] Travel Guide".
 
-2. Caption (180–300 words, mobile-optimised)
-- Short paragraphs of 1–3 lines with blank lines between them
-- Build a FLOWING ITINERARY story using the provided place descriptions in order:
-    • Open with a strong scroll-stopping HOOK tied to the destination's mood or vibe
-    • Move naturally from one place to the next: "Start your morning at...", "Head next to...",
-      "By afternoon, make your way to...", "As the sun sets...", "Don't leave without..."
-    • For each featured place, weave in its specific vibe/description — a food rec, hidden detail,
-      best time to visit, or local tip that makes the reader think "I need to go here"
-    • Share a personal creator moment: a favourite memory, surprising discovery, or honest opinion
-    • End with a strong CTA: "Save this for your next trip 📌", "Tag someone you'd bring here 👇",
-      "Drop a comment if this is on your bucket list ✈️"
-- Natural emojis (~1 per 2–3 sentences) as visual breaks, never forced
-- NEVER use bullet points, numbered lists, or day-by-day headers
-- Use phrases like: "This place genuinely surprised me", "Easily one of my favourites",
-  "You honestly need to experience this", "I'd come back in a heartbeat"
+=== CAPTION (150-250 words total) ===
 
-3. Hashtags (exactly 10, no # symbol)
-- Mix: 2–3 location-specific, 3 niche travel, 3 medium-volume, 1 broad reach, 1 mood/vibe
-- No duplicates
+Structure it in these 4 parts — use a blank line between each part:
 
-4. Keywords
-- 10–20 SEO keywords as a single string separated by "|", no # symbols
+PART A: Viral Hook (1-2 lines, under 20 words)
+A punchy opener that stops the scroll. Use a flag emoji or single strong emoji. Examples:
+- "🇫🇷 Save this Nice itinerary for your next trip."
+- "If you only have one day in Nice, do this 👇"
+- "Don't visit Nice until you've seen these places."
+- "The perfect day in Nice, France ✨"
+
+PART B: Short Story (3-5 paragraphs, 2-3 sentences each)
+Describe the destination conversationally — atmosphere, food, hidden gems, what makes it memorable.
+Use the provided place descriptions in order. Keep sentences short and punchy.
+Vary your language — do not repeat the same openers or phrases across paragraphs.
+Write like a friend, not a guidebook.
+
+PART C: Easy-to-Save Itinerary (bullet format — keep it skimmable)
+Organise the locations into time slots using this format:
+
+📍 Morning
+• [Place] — [one short tip, under 10 words]
+• [Place] — [one short tip]
+
+🌿 Midday
+• [Place] — [one short tip]
+
+🍝 Lunch
+• [Food experience or restaurant area]
+
+🌅 Sunset
+• [Place]
+
+⚓ Evening
+• [Place]
+
+Pick emoji anchors that match the vibe (use 🏙️ 🏛️ 🎨 🛒 etc. where relevant).
+Each bullet = place name + one useful tip. Easy to screenshot.
+
+PART D: CTA (1 line only — rotate between these, don't always pick the same one)
+- "📌 Save this itinerary for later."
+- "✈️ Send this to your travel partner."
+- "👇 Which stop would you visit first?"
+- "🗺️ Drop a comment if this is on your list."
+
+=== HASHTAGS (3-5 only, no # symbol) ===
+Only the most relevant. For Nice: NiceFrance, FrenchRiviera, TravelFrance, EuropeTravel, NiceGuide
+Avoid generic tags like "travel" or "wanderlust" unless nothing better applies.
+
+=== KEYWORDS ===
+10-15 Instagram SEO keywords separated by "|", no # symbols.
+
+STYLE RULES:
+- Every sentence must add value: a tip, a reason to go, an atmosphere detail, or a specific experience
+- Vary openers across paragraphs — never start two paragraphs the same way
+- Banned phrases: "I'd come back in a heartbeat", "You honestly need to experience this",
+  "This place surprised me", "Easily one of my favourites", "I'd come back"
+- Caption must feel like a save-worthy travel guide, not a blog post
 """
 
 
@@ -838,7 +875,7 @@ async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse
 
     title = str(data.get("title") or "").strip()
     caption = str(data.get("caption") or "").strip()
-    hashtags = [str(h).strip().lstrip("#") for h in (data.get("hashtags") or []) if str(h).strip()][:10]
+    hashtags = [str(h).strip().lstrip("#") for h in (data.get("hashtags") or []) if str(h).strip()][:5]
     keywords = str(data.get("keywords") or "").strip()
 
     hashtag_block = " ".join(f"#{h}" for h in hashtags)
