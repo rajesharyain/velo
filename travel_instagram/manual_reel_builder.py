@@ -423,9 +423,19 @@ def _hook_fragment_style(fragment: str, loc_keys: set[str]) -> str:
     return "normal"
 
 
+_HOOK_LINE_BREAK = "\x00BREAK\x00"
+
+
 def _split_hook_preserve_space(text: str) -> list[str]:
-    parts = re.findall(r"\S+|\s+", (text or "").strip())
-    return parts if parts else []
+    # Replace explicit \n with a break marker so _wrap_hook_lines can force a new line
+    normalised = (text or "").strip().replace("\\n", "\n")
+    result: list[str] = []
+    for segment in normalised.split("\n"):
+        if result:
+            result.append(_HOOK_LINE_BREAK)
+        parts = re.findall(r"\S+|\s+", segment)
+        result.extend(parts)
+    return result
 
 
 def _hook_token_line_width(
@@ -462,6 +472,12 @@ def _wrap_hook_lines(
         cur_w = 0
 
     for frag, sty in typed:
+        # Explicit line break — flush current line immediately
+        if frag == _HOOK_LINE_BREAK:
+            flush()
+            if len(lines) >= max_lines:
+                break
+            continue
         is_space_only = frag.isspace()
         f = fonts[sty]
         bb = draw.textbbox((0, 0), frag, font=f)
@@ -539,12 +555,13 @@ def _render_hook_overlay_png(
     draw = ImageDraw.Draw(img)
     loc_keys = _hook_location_keywords(location_hint)
     fs = max(0.6, min(1.7, float(font_scale)))
-    max_w = int(frame_w * 0.88)
-    line_gap = max(6, int(frame_h * 0.006))
+    max_w = int(frame_w * 0.82)
+    line_gap = max(8, int(frame_h * 0.010))
 
-    sz_n = int(frame_h * 0.032 * fs)
-    sz_loc = int(frame_h * 0.052 * fs)
-    sz_sh = int(frame_h * 0.046 * fs)
+    # Two-tier font sizes: context line (smaller) vs location/shout (larger)
+    sz_n = int(frame_h * 0.038 * fs)    # context line — "Hidden gems of"
+    sz_loc = int(frame_h * 0.068 * fs)  # city/country name — large yellow
+    sz_sh = int(frame_h * 0.058 * fs)   # ALL-CAPS shout words
     fonts = {
         "normal": _try_hook_font(sz_n),
         "location": _try_hook_font(sz_loc),
@@ -558,7 +575,11 @@ def _render_hook_overlay_png(
         img.save(out_png)
         return out_png
 
-    lines = _wrap_hook_lines(draw, frags, loc_keys, fonts, max_w, 6)
+    # Hook always renders centered vertically for a title-card feel
+    cx = float(frame_w) * 0.5
+    cy = float(frame_h) * 0.5
+
+    lines = _wrap_hook_lines(draw, frags, loc_keys, fonts, max_w, 4)
     line_metrics: list[tuple[int, int]] = []
     for line in lines:
         asc = 0
@@ -571,14 +592,41 @@ def _render_hook_overlay_png(
         line_metrics.append((asc, desc))
 
     block_h = sum(a + d for a, d in line_metrics) + max(0, len(lines) - 1) * line_gap
-    cx = float(anchor_x) * float(frame_w)
-    cy = float(anchor_y) * float(frame_h)
+    pad_x = int(frame_w * 0.06)
+    pad_y = int(frame_h * 0.022)
+
+    # Compute max line width for background box
+    max_line_w = max(
+        (_hook_token_line_width(draw, line, fonts) for line in lines),
+        default=0,
+    )
+    box_w = min(max_line_w + pad_x * 2, int(frame_w * 0.92))
+    box_h = block_h + pad_y * 2
+    box_x0 = int(cx - box_w / 2)
+    box_y0 = int(cy - box_h / 2)
+    box_x1 = box_x0 + box_w
+    box_y1 = box_y0 + box_h
+    radius = max(12, int(frame_h * 0.018))
+
+    # Draw semi-transparent dark background pill
+    draw.rounded_rectangle(
+        (box_x0, box_y0, box_x1, box_y1),
+        radius=radius,
+        fill=(0, 0, 0, 165),
+    )
+    # Thin yellow accent line on the left edge of the box
+    accent_w = max(4, int(frame_w * 0.006))
+    draw.rounded_rectangle(
+        (box_x0, box_y0, box_x0 + accent_w, box_y1),
+        radius=radius,
+        fill=_HOOK_FILL_YELLOW,
+    )
+
+    stroke_n = max(1, int(round(fs * 0.7)))
+    stroke_loc = max(2, int(round(fs * 1.1)))
+    stroke_sh = max(2, int(round(fs * 1.0)))
+
     y_cursor = cy - block_h / 2.0
-
-    stroke_n = max(1, int(round(fs * 0.9)))
-    stroke_loc = max(2, int(round(fs * 1.25)))
-    stroke_sh = max(2, int(round(fs * 1.15)))
-
     for li, line in enumerate(lines):
         line_asc, line_desc = line_metrics[li]
         total_w = _hook_token_line_width(draw, line, fonts)
@@ -597,10 +645,8 @@ def _render_hook_overlay_png(
             if sty == "shout" and frag.strip() and not frag.isspace():
                 und_y = bb[3] + max(2, int(frame_h * 0.004))
                 und_h = max(3, int(frame_h * 0.005 * fs))
-                und_x0 = bb[0] - 2
-                und_x1 = bb[2] + 2
                 draw.rounded_rectangle(
-                    (und_x0, und_y, und_x1, und_y + und_h),
+                    (bb[0] - 2, und_y, bb[2] + 2, und_y + und_h),
                     radius=max(2, und_h // 2),
                     fill=_HOOK_FILL_YELLOW,
                 )
@@ -909,6 +955,7 @@ def build_manual_reel(
     titles: list[str] | None = None,
     caption_texts: list[str] | None = None,
     hook_caption: str = "",
+    hook_location_hint: str = "",
     hook_seconds: float = 3.0,
     image_segment_seconds: float = 3.0,
     video_segment_seconds: float = 5.0,
@@ -1064,7 +1111,7 @@ def build_manual_reel(
                     anchor_y=anchor[1],
                     font_scale=fs,
                     hook_mode=True,
-                    hook_location_hint=tit_i,
+                    hook_location_hint=hook_location_hint or tit_i,
                     show_branding=show_branding,
                 )
                 hook_part = reel_work / f"seg_{i:02d}_hook.mp4"
