@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-07-11T15:07:36.993Z",
+  "updatedAt": "2026-07-11T15:09:56.800Z",
   "createdAt": "2026-07-08T16:59:40.379Z",
   "id": "UgNKfVqQNN0Rya6m",
   "name": "Excel → Reels → Instagram (Approve & Publish)",
@@ -432,6 +432,23 @@
         240,
         440
       ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "velo-daily-run",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "webhook-trigger",
+      "name": "Webhook Trigger",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        240,
+        600
+      ],
+      "webhookId": "e09c1423-0338-4435-ab0a-6ce5e4a055f6"
     }
   ],
   "connections": {
@@ -622,6 +639,17 @@
           }
         ]
       ]
+    },
+    "Webhook Trigger": {
+      "main": [
+        [
+          {
+            "node": "Get Next Pending Row",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "settings": {
@@ -642,10 +670,10 @@
   "meta": null,
   "nodeGroups": [],
   "pinData": {},
-  "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
-  "activeVersionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
-  "versionCounter": 15,
-  "triggerCount": 1,
+  "versionId": "62577622-7994-496d-92d9-8436d8f4213d",
+  "activeVersionId": "62577622-7994-496d-92d9-8436d8f4213d",
+  "versionCounter": 16,
+  "triggerCount": 2,
   "sourceWorkflowId": null,
   "shared": [
     {
@@ -669,9 +697,9 @@
   ],
   "tags": [],
   "activeVersion": {
-    "updatedAt": "2026-07-11T15:07:36.994Z",
-    "createdAt": "2026-07-11T15:07:36.994Z",
-    "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+    "updatedAt": "2026-07-11T15:09:56.801Z",
+    "createdAt": "2026-07-11T15:09:56.801Z",
+    "versionId": "62577622-7994-496d-92d9-8436d8f4213d",
     "workflowId": "UgNKfVqQNN0Rya6m",
     "nodes": [
       {
@@ -1099,6 +1127,23 @@
           240,
           440
         ]
+      },
+      {
+        "parameters": {
+          "httpMethod": "POST",
+          "path": "velo-daily-run",
+          "responseMode": "onReceived",
+          "options": {}
+        },
+        "id": "webhook-trigger",
+        "name": "Webhook Trigger",
+        "type": "n8n-nodes-base.webhook",
+        "typeVersion": 2,
+        "position": [
+          240,
+          600
+        ],
+        "webhookId": "e09c1423-0338-4435-ab0a-6ce5e4a055f6"
       }
     ],
     "connections": {
@@ -1289,6 +1334,17 @@
             }
           ]
         ]
+      },
+      "Webhook Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Next Pending Row",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
       }
     },
     "nodeGroups": [],
@@ -1298,34 +1354,18 @@
     "autosaved": false,
     "workflowPublishHistory": [
       {
-        "createdAt": "2026-07-11T15:07:37.037Z",
-        "id": 33,
+        "createdAt": "2026-07-11T15:09:56.833Z",
+        "id": 37,
         "workflowId": "UgNKfVqQNN0Rya6m",
-        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+        "versionId": "62577622-7994-496d-92d9-8436d8f4213d",
         "event": "activated",
         "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
       },
       {
-        "createdAt": "2026-07-11T15:07:41.585Z",
-        "id": 35,
+        "createdAt": "2026-07-11T15:09:56.822Z",
+        "id": 36,
         "workflowId": "UgNKfVqQNN0Rya6m",
-        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
-        "event": "activated",
-        "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
-      },
-      {
-        "createdAt": "2026-07-11T15:07:37.023Z",
-        "id": 32,
-        "workflowId": "UgNKfVqQNN0Rya6m",
-        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
-        "event": "deactivated",
-        "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
-      },
-      {
-        "createdAt": "2026-07-11T15:07:41.576Z",
-        "id": 34,
-        "workflowId": "UgNKfVqQNN0Rya6m",
-        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+        "versionId": "62577622-7994-496d-92d9-8436d8f4213d",
         "event": "deactivated",
         "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
       }
