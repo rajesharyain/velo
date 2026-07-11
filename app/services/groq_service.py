@@ -36,7 +36,7 @@ You MUST return this exact shape:
       "type": "city|region|island|area|landmark_area",
       "highlights": ["short highlight 1", "short highlight 2", "short highlight 3"],
       "best_query": "single best English line for stock photo search",
-      "caption_text": "Instagram Reels on-video blurb under the place name: MAX 12-15 words. START with a strong hook (curiosity, emotion, or punch). Simple, emotional, scroll-stopping — NOT a long description. No hashtags, no search keywords.",
+      "caption_text": "10-12 words MAX. Raw emotion or sensory detail — NO place/country name, NO 'discover/uncover/explore/experience'. Feel, don't describe. E.g.: 'Nothing prepares you for your first sunset here.'",
       "queries": ["query1", "query2", "query3", "query4"]
     }
   ]
@@ -44,7 +44,7 @@ You MUST return this exact shape:
 
 Hard rules:
 - Always return EXACTLY 5 objects in "places".
-- "caption_text": required on every place. Hard cap 12-15 words. Open with a hook that makes viewers stop scrolling; keep language simple and emotional. Never write a travel-guide paragraph. Do not repeat the place name only; do not paste search keywords. This appears on-video under the location title.
+- "caption_text": STRICT RULES — this appears on-video under the location title. Hard cap 10-12 words. FORBIDDEN: place name, country name, region name, any search-style phrasing, "discover", "uncover", "explore", "experience", "hidden gems of X". REQUIRED: start with raw emotion, curiosity, or sensory detail — make the viewer FEEL something before they think. Write like a friend whispering a secret, not a tour guide. Examples of GOOD caption_text: "Nothing prepares you for your first sunset here.", "Locals keep this one off every map.", "You'll want to move here after one afternoon.", "This place broke my idea of what beauty means.", "Once you see it, nowhere else feels quite right."
 - Each place must have 4 to 6 strings in "queries" (inclusive). "best_query" is separate and MUST NOT be duplicated inside "queries".
 - Every query string must: include the place or area name (or unambiguous local name), mention a landmark OR vibe from highlights OR a visual scene, and include at least one visual keyword when natural (e.g. sunset, aerial, drone, waterfront, night, historic, coastline, architecture).
 - "best_query" CRITICAL RULE: MUST contain the exact place name or landmark name. It is the PRIMARY Pexels search — the reel title shown to viewers comes from this place's name, so the media returned MUST visually match. Forbidden: generic country/region terms alone (e.g. "Ireland coastal landscape" for Cliffs of Moher). Required: the specific place name + one strong visual scene (e.g. "Cliffs of Moher aerial view Ireland", "Alhambra palace Granada Spain", "Ha Long Bay limestone karsts Vietnam"). If the place IS a city, include its most iconic landmark or district (e.g. "Dublin city Temple Bar night" not just "Dublin Ireland").
