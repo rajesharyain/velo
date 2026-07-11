@@ -1,5 +1,11 @@
 {
+  "updatedAt": "2026-07-11T15:07:36.993Z",
+  "createdAt": "2026-07-08T16:59:40.379Z",
+  "id": "UgNKfVqQNN0Rya6m",
   "name": "Excel → Reels → Instagram (Approve & Publish)",
+  "description": null,
+  "active": true,
+  "isArchived": false,
   "nodes": [
     {
       "parameters": {},
@@ -11,23 +17,6 @@
         240,
         280
       ]
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "velo-daily-run",
-        "responseMode": "onReceived",
-        "options": {}
-      },
-      "id": "trigger-webhook",
-      "name": "Daily Schedule Trigger",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 2,
-      "position": [
-        240,
-        440
-      ],
-      "webhookId": "velo-daily-run"
     },
     {
       "parameters": {
@@ -419,6 +408,30 @@
         900,
         480
       ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 17 * * *"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 5 * * *"
+            }
+          ]
+        }
+      },
+      "id": "daily-schedule-trigger",
+      "name": "Daily Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        440
+      ]
     }
   ],
   "connections": {
@@ -613,5 +626,709 @@
   },
   "settings": {
     "executionOrder": "v1"
+  },
+  "staticData": {
+    "node:Daily Schedule Trigger": {
+      "recurrenceRules": [
+        null,
+        null
+      ],
+      "recurrenceRuleSignatures": [
+        null,
+        null
+      ]
+    }
+  },
+  "meta": null,
+  "nodeGroups": [],
+  "pinData": {},
+  "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+  "activeVersionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+  "versionCounter": 15,
+  "triggerCount": 1,
+  "sourceWorkflowId": null,
+  "shared": [
+    {
+      "updatedAt": "2026-07-08T16:59:40.380Z",
+      "createdAt": "2026-07-08T16:59:40.380Z",
+      "role": "workflow:owner",
+      "workflowId": "UgNKfVqQNN0Rya6m",
+      "projectId": "T9YIO1pfvTRIV9XD",
+      "project": {
+        "updatedAt": "2026-07-07T23:28:12.540Z",
+        "createdAt": "2026-07-07T23:28:12.540Z",
+        "id": "T9YIO1pfvTRIV9XD",
+        "name": "Rajesh Kumar <rajesharyain@gmail.com>",
+        "type": "personal",
+        "icon": null,
+        "description": null,
+        "customTelemetryTags": [],
+        "creatorId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
+      }
+    }
+  ],
+  "tags": [],
+  "activeVersion": {
+    "updatedAt": "2026-07-11T15:07:36.994Z",
+    "createdAt": "2026-07-11T15:07:36.994Z",
+    "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+    "workflowId": "UgNKfVqQNN0Rya6m",
+    "nodes": [
+      {
+        "parameters": {},
+        "id": "trigger-manual",
+        "name": "Manual Trigger",
+        "type": "n8n-nodes-base.manualTrigger",
+        "typeVersion": 1,
+        "position": [
+          240,
+          280
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "http://velo:8000/api/excel-reels/next-pending",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "get-next-pending",
+        "name": "Get Next Pending Row",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          460,
+          360
+        ]
+      },
+      {
+        "parameters": {
+          "conditions": {
+            "options": {
+              "caseSensitive": false,
+              "leftValue": "",
+              "typeValidation": "loose"
+            },
+            "conditions": [
+              {
+                "id": "check-pending",
+                "leftValue": "={{ $json.destination }}",
+                "rightValue": "",
+                "operator": {
+                  "type": "string",
+                  "operation": "notEquals"
+                }
+              }
+            ],
+            "combinator": "and"
+          },
+          "options": {}
+        },
+        "id": "if-pending",
+        "name": "Has Pending Row?",
+        "type": "n8n-nodes-base.if",
+        "typeVersion": 2,
+        "position": [
+          680,
+          360
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://velo:8000/api/ad-reels/travel-media",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"query\": \"{{ $('Get Next Pending Row').item.json.destination }}\",\n  \"tags\": {{ $('Get Next Pending Row').item.json.tags ? JSON.stringify($('Get Next Pending Row').item.json.tags.split(',').map(t => t.trim()).filter(Boolean)) : '[]' }},\n  \"orientation\": {{ $('Get Next Pending Row').item.json.orientation ? '\"' + $('Get Next Pending Row').item.json.orientation + '\"' : 'null' }},\n  \"download\": false\n}",
+          "options": {
+            "timeout": 180000
+          }
+        },
+        "id": "fetch-media",
+        "name": "Fetch Travel Media (Groq + Pexels)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          900,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const data = $input.first().json;\nconst pendingData = $('Get Next Pending Row').first().json;\nconst selectedClips = data.selected_clips || [];\n\nconst MIN_SECS = 17;\nconst MAX_SECS = 28;\nconst BASE_VIDEO_SECS = 3;\nconst BASE_IMAGE_SECS = 2;\n\nif (selectedClips.length === 0) throw new Error('No selected_clips in travel-media response');\n\nconst picked = selectedClips.map(clip => ({\n  source: 'url',\n  url: clip.url,\n  media_type: clip.type,\n  title: clip.title || '',\n  caption_text: clip.caption_text || '',\n}));\n\nconst videoCount = picked.filter(p => p.media_type === 'video').length;\nconst imageCount = picked.filter(p => p.media_type === 'image').length;\nconst baseDuration = videoCount * BASE_VIDEO_SECS + imageCount * BASE_IMAGE_SECS;\n\nlet clipVideo = BASE_VIDEO_SECS;\nlet clipImage = BASE_IMAGE_SECS;\n\nif (baseDuration < MIN_SECS) {\n  const scale = MIN_SECS / Math.max(baseDuration, 1);\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n} else if (baseDuration > MAX_SECS) {\n  const scale = MAX_SECS / baseDuration;\n  clipVideo = Math.round(BASE_VIDEO_SECS * scale * 10) / 10;\n  clipImage = Math.round(BASE_IMAGE_SECS * scale * 10) / 10;\n}\n\nconst estimatedDuration = videoCount * clipVideo + imageCount * clipImage;\n\nreturn [{\n  json: {\n    picked_items: picked,\n    clip_seconds_video: String(clipVideo),\n    clip_seconds_image: String(clipImage),\n    total_items: picked.length,\n    estimated_duration_secs: estimatedDuration,\n    hook_caption: data.user_query || '',\n    row_index: pendingData.row_index,\n    destination: pendingData.destination,\n  }\n}];"
+        },
+        "id": "pick-media",
+        "name": "Pick Best Media Items",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          1120,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "GET",
+          "url": "http://velo:8000/api/music/auto-track",
+          "sendQuery": true,
+          "queryParameters": {
+            "parameters": [
+              {
+                "name": "mood",
+                "value": "travel"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 30000
+          }
+        },
+        "id": "fetch-music",
+        "name": "Fetch Music Track (Jamendo)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1340,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://velo:8000/api/upload-reel/generate",
+          "sendBody": true,
+          "contentType": "multipart-form-data",
+          "bodyParameters": {
+            "parameters": [
+              {
+                "name": "items_json",
+                "value": "={{ JSON.stringify($('Pick Best Media Items').item.json.picked_items) }}"
+              },
+              {
+                "name": "transition_type",
+                "value": "fade"
+              },
+              {
+                "name": "clip_seconds_image",
+                "value": "={{ $('Pick Best Media Items').item.json.clip_seconds_image }}"
+              },
+              {
+                "name": "clip_seconds_video",
+                "value": "={{ $('Pick Best Media Items').item.json.clip_seconds_video }}"
+              },
+              {
+                "name": "music_track_id",
+                "value": "={{ $json.track_id || '' }}"
+              },
+              {
+                "name": "music_volume",
+                "value": "0.25"
+              },
+              {
+                "name": "show_branding",
+                "value": "0"
+              },
+              {
+                "name": "hook_caption",
+                "value": "={{ $('Pick Best Media Items').item.json.hook_caption }}"
+              },
+              {
+                "name": "hook_seconds",
+                "value": "2"
+              },
+              {
+                "name": "hook_location_hint",
+                "value": "={{ $('Pick Best Media Items').item.json.destination }}"
+              },
+              {
+                "name": "hook_plain",
+                "value": "1"
+              }
+            ]
+          },
+          "options": {
+            "timeout": 300000
+          }
+        },
+        "id": "generate-reel",
+        "name": "Generate Reel (FFmpeg)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1560,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://velo:8000/api/instagram/generate-caption",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"destination\": \"{{ $('Pick Best Media Items').item.json.destination }}\",\n  \"places\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_names || []) }},\n  \"place_descriptions\": {{ JSON.stringify($('Pick Best Media Items').item.json.place_descriptions || []) }},\n  \"video_url\": \"{{ $json.video_url || '' }}\"\n}",
+          "options": {
+            "timeout": 60000
+          }
+        },
+        "id": "generate-caption",
+        "name": "Generate Caption & Hashtags (AI)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          1780,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://velo:8000/api/youtube/generate-metadata",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"title\": {{ JSON.stringify($json.title || '') }},\n  \"video_summary\": {{ JSON.stringify($json.caption || '') }},\n  \"location\": {{ JSON.stringify($('Pick Best Media Items').item.json.destination || '') }},\n  \"landmarks\": {{ JSON.stringify(($('Pick Best Media Items').item.json.place_names || []).join(', ')) }},\n  \"mood\": {{ JSON.stringify($json.keywords || '') }},\n  \"keywords\": {{ JSON.stringify($json.keywords || '') }}\n}",
+          "options": {
+            "timeout": 60000
+          }
+        },
+        "id": "generate-yt-metadata",
+        "name": "Generate YouTube Metadata (AI)",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2000,
+          260
+        ],
+        "continueOnFail": true
+      },
+      {
+        "parameters": {
+          "jsCode": "const captionData = $('Generate Caption & Hashtags (AI)').first().json;\nconst ytMeta = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n  youtube_title: ytMeta.youtube_title || '',\n  youtube_description: ytMeta.youtube_description || '',\n  youtube_tags: ytMeta.youtube_tags || [],\n  youtube_pinned_comment: ytMeta.youtube_pinned_comment || '',\n  youtube_title_variations: ytMeta.youtube_title_variations || [],\n}}];\n"
+        },
+        "id": "assemble-preview",
+        "name": "Assemble Preview Data",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2220,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://velo:8000/api/instagram/preview/save",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"destination\": \"{{ $json.destination }}\",\n  \"video_url\": \"{{ $json.video_url }}\",\n  \"title\": {{ JSON.stringify($json.title) }},\n  \"caption\": {{ JSON.stringify($json.caption) }},\n  \"formatted_post\": {{ JSON.stringify($json.formatted_post) }},\n  \"hashtags\": {{ JSON.stringify($json.hashtags) }},\n  \"keywords\": {{ JSON.stringify($json.keywords) }},\n  \"row_index\": {{ $json.row_index }},\n  \"reel_duration_secs\": {{ $json.reel_duration_secs }},\n  \"youtube_title\": {{ JSON.stringify($json.youtube_title || '') }},\n  \"youtube_description\": {{ JSON.stringify($json.youtube_description || '') }},\n  \"youtube_tags\": {{ JSON.stringify($json.youtube_tags || []) }},\n  \"youtube_pinned_comment\": {{ JSON.stringify($json.youtube_pinned_comment || '') }},\n  \"youtube_title_variations\": {{ JSON.stringify($json.youtube_title_variations || []) }}\n}",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "save-preview",
+        "name": "Save Preview",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2440,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "http://velo:8000/api/excel-reels/mark-done",
+          "sendHeaders": true,
+          "headerParameters": {
+            "parameters": [
+              {
+                "name": "Content-Type",
+                "value": "application/json"
+              }
+            ]
+          },
+          "sendBody": true,
+          "specifyBody": "json",
+          "jsonBody": "={\n  \"row_index\": {{ $('Assemble Preview Data').item.json.row_index }},\n  \"video_url\": \"{{ $('Assemble Preview Data').item.json.video_url }}\",\n  \"status\": \"done\"\n}",
+          "options": {
+            "timeout": 15000
+          }
+        },
+        "id": "mark-done",
+        "name": "Mark Done in Excel",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          2660,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst assembleData = $('Assemble Preview Data').first().json;\nconst musicSource = assembleData.music_source || 'none';\nconst musicTitle = assembleData.music_title || '';\nconst musicArtist = assembleData.music_artist || '';\nconst ytTitle = assembleData.youtube_title || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nif (ytTitle) {\n  console.log('YT Title    :', ytTitle);\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram + YouTube now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
+        },
+        "id": "log-preview-url",
+        "name": "Preview URL",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          2880,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'http://velo:8000/api/instagram/publish/' + $json.preview_id }}",
+          "options": {
+            "timeout": 120000
+          }
+        },
+        "id": "publish-instagram",
+        "name": "Publish to Instagram",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3100,
+          160
+        ],
+        "continueOnFail": true,
+        "disabled": false
+      },
+      {
+        "parameters": {
+          "method": "POST",
+          "url": "={{ 'http://velo:8000/api/youtube/publish/' + $('Preview URL').item.json.preview_id }}",
+          "options": {
+            "timeout": 600000
+          }
+        },
+        "id": "publish-youtube",
+        "name": "Publish to YouTube Shorts",
+        "type": "n8n-nodes-base.httpRequest",
+        "typeVersion": 4.2,
+        "position": [
+          3100,
+          360
+        ],
+        "continueOnFail": true,
+        "disabled": false
+      },
+      {
+        "parameters": {
+          "jsCode": "const previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nlet igMediaId = '—', igStatus = 'unknown';\nlet ytVideoId = '—', ytStatus = 'unknown';\n\ntry {\n  const igResult = $('Publish to Instagram').first().json;\n  igMediaId = igResult.ig_media_id || igResult.detail || igResult.error?.message || '—';\n  igStatus = igResult.ig_media_id ? 'ok' : 'failed';\n} catch (e) {\n  igStatus = 'error: ' + e.message;\n}\n\ntry {\n  const ytResult = $('Publish to YouTube Shorts').first().json;\n  ytVideoId = ytResult.youtube_video_id || ytResult.id || ytResult.detail || '—';\n  ytStatus = ytResult.youtube_video_id || ytResult.id ? 'ok' : 'failed';\n} catch (e) {\n  ytStatus = 'error: ' + e.message;\n}\n\nconsole.log('\\n🎉 PUBLISHED!');\nconsole.log('Preview URL  :', previewUrl);\nconsole.log('IG Media ID  :', igMediaId, '(' + igStatus + ')');\nconsole.log('YT Video ID  :', ytVideoId, '(' + ytStatus + ')');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igMediaId !== '—' ? igMediaId : '',\n  ig_status: igStatus,\n  yt_video_id: ytVideoId !== '—' ? ytVideoId : '',\n  yt_status: ytStatus,\n} }];"
+        },
+        "id": "published-log",
+        "name": "Published!",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          3320,
+          260
+        ]
+      },
+      {
+        "parameters": {
+          "jsCode": "console.log('Queue is empty — no pending rows in reels-queue.xlsx');\nreturn [{ json: { status: 'no_pending', message: 'Queue is empty.' } }];\n"
+        },
+        "id": "no-pending",
+        "name": "Queue Empty (No-op)",
+        "type": "n8n-nodes-base.code",
+        "typeVersion": 2,
+        "position": [
+          900,
+          480
+        ]
+      },
+      {
+        "parameters": {
+          "rule": {
+            "interval": [
+              {
+                "field": "cronExpression",
+                "expression": "0 17 * * *"
+              },
+              {
+                "field": "cronExpression",
+                "expression": "0 5 * * *"
+              }
+            ]
+          }
+        },
+        "id": "daily-schedule-trigger",
+        "name": "Daily Schedule Trigger",
+        "type": "n8n-nodes-base.scheduleTrigger",
+        "typeVersion": 1.2,
+        "position": [
+          240,
+          440
+        ]
+      }
+    ],
+    "connections": {
+      "Manual Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Next Pending Row",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Daily Schedule Trigger": {
+        "main": [
+          [
+            {
+              "node": "Get Next Pending Row",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Get Next Pending Row": {
+        "main": [
+          [
+            {
+              "node": "Has Pending Row?",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Has Pending Row?": {
+        "main": [
+          [
+            {
+              "node": "Fetch Travel Media (Groq + Pexels)",
+              "type": "main",
+              "index": 0
+            }
+          ],
+          [
+            {
+              "node": "Queue Empty (No-op)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Travel Media (Groq + Pexels)": {
+        "main": [
+          [
+            {
+              "node": "Pick Best Media Items",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Pick Best Media Items": {
+        "main": [
+          [
+            {
+              "node": "Fetch Music Track (Jamendo)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Fetch Music Track (Jamendo)": {
+        "main": [
+          [
+            {
+              "node": "Generate Reel (FFmpeg)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Generate Reel (FFmpeg)": {
+        "main": [
+          [
+            {
+              "node": "Generate Caption & Hashtags (AI)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Generate Caption & Hashtags (AI)": {
+        "main": [
+          [
+            {
+              "node": "Generate YouTube Metadata (AI)",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Generate YouTube Metadata (AI)": {
+        "main": [
+          [
+            {
+              "node": "Assemble Preview Data",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Assemble Preview Data": {
+        "main": [
+          [
+            {
+              "node": "Save Preview",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Save Preview": {
+        "main": [
+          [
+            {
+              "node": "Mark Done in Excel",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Mark Done in Excel": {
+        "main": [
+          [
+            {
+              "node": "Preview URL",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Preview URL": {
+        "main": [
+          [
+            {
+              "node": "Publish to Instagram",
+              "type": "main",
+              "index": 0
+            },
+            {
+              "node": "Publish to YouTube Shorts",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Publish to Instagram": {
+        "main": [
+          [
+            {
+              "node": "Published!",
+              "type": "main",
+              "index": 0
+            }
+          ]
+        ]
+      },
+      "Publish to YouTube Shorts": {
+        "main": [
+          [
+            {
+              "node": "Published!",
+              "type": "main",
+              "index": 1
+            }
+          ]
+        ]
+      }
+    },
+    "nodeGroups": [],
+    "authors": "Rajesh Kumar",
+    "name": null,
+    "description": null,
+    "autosaved": false,
+    "workflowPublishHistory": [
+      {
+        "createdAt": "2026-07-11T15:07:37.037Z",
+        "id": 33,
+        "workflowId": "UgNKfVqQNN0Rya6m",
+        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+        "event": "activated",
+        "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
+      },
+      {
+        "createdAt": "2026-07-11T15:07:41.585Z",
+        "id": 35,
+        "workflowId": "UgNKfVqQNN0Rya6m",
+        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+        "event": "activated",
+        "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
+      },
+      {
+        "createdAt": "2026-07-11T15:07:37.023Z",
+        "id": 32,
+        "workflowId": "UgNKfVqQNN0Rya6m",
+        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+        "event": "deactivated",
+        "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
+      },
+      {
+        "createdAt": "2026-07-11T15:07:41.576Z",
+        "id": 34,
+        "workflowId": "UgNKfVqQNN0Rya6m",
+        "versionId": "6fe9444f-a1d4-48bc-82d2-ffce41f410fd",
+        "event": "deactivated",
+        "userId": "95c1ecfc-d23d-4cb7-92bf-0aa4638244b2"
+      }
+    ]
   }
 }
