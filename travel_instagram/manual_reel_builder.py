@@ -751,8 +751,9 @@ def _render_caption_overlay(
     if body_lines:
         total_h += (block_gap if (title_lines or sub_lines) else 0) + bh
 
-    # Vertically center the text block, matching the hook title-card layout.
-    cy_line = (h - total_h) // 2
+    # Pin the title's midpoint to frame center — same y as the hook title card.
+    # Sub-text and body flow below center; when there's no title, center the whole block.
+    cy_line = h // 2 - th // 2 if title_lines else (h - total_h) // 2
 
     title_stroke = max(2, int(round(font_scale * 1.5)))
     sub_stroke = max(1, int(round(font_scale * 1.1)))
