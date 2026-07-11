@@ -1,5 +1,5 @@
 {
-  "name": "Excel \u2192 Reels \u2192 Instagram (Approve & Publish)",
+  "name": "Excel → Reels → Instagram (Approve & Publish)",
   "nodes": [
     {
       "parameters": {},
@@ -345,7 +345,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst assembleData = $('Assemble Preview Data').first().json;\nconst musicSource = assembleData.music_source || 'none';\nconst musicTitle = assembleData.music_title || '';\nconst musicArtist = assembleData.music_artist || '';\nconst ytTitle = assembleData.youtube_title || '';\nconsole.log('\\n\ud83d\udccb PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' \u2014 ' + musicArtist : ''));\n}\nif (ytTitle) {\n  console.log('YT Title    :', ytTitle);\n}\nconsole.log('Excel row marked done \u2713');\nconsole.log('Publishing to Instagram + YouTube now\u2026');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
+        "jsCode": "const saveData = $('Save Preview').first().json;\nconst previewId = saveData.preview_id;\nconst previewUrl = 'http://localhost:8000/instagram-preview/' + previewId;\nconst assembleData = $('Assemble Preview Data').first().json;\nconst musicSource = assembleData.music_source || 'none';\nconst musicTitle = assembleData.music_title || '';\nconst musicArtist = assembleData.music_artist || '';\nconst ytTitle = assembleData.youtube_title || '';\nconsole.log('\\n📋 PREVIEW READY');\nconsole.log('Preview URL :', previewUrl);\nif (musicSource !== 'none') {\n  console.log('Music [' + musicSource + ']:', musicTitle + (musicArtist ? ' — ' + musicArtist : ''));\n}\nif (ytTitle) {\n  console.log('YT Title    :', ytTitle);\n}\nconsole.log('Excel row marked done ✓');\nconsole.log('Publishing to Instagram + YouTube now…');\nreturn [{ json: { preview_id: previewId, preview_url: previewUrl } }];\n"
       },
       "id": "log-preview-url",
       "name": "Preview URL",
@@ -359,7 +359,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://velo:8000/api/instagram/publish/{{ $json.preview_id }}",
+        "url": "={{ 'http://velo:8000/api/instagram/publish/' + $json.preview_id }}",
         "options": {
           "timeout": 120000
         }
@@ -378,7 +378,7 @@
     {
       "parameters": {
         "method": "POST",
-        "url": "=http://velo:8000/api/youtube/publish/{{ $('Preview URL').item.json.preview_id }}",
+        "url": "={{ 'http://velo:8000/api/youtube/publish/' + $('Preview URL').item.json.preview_id }}",
         "options": {
           "timeout": 600000
         }
@@ -396,7 +396,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nlet igMediaId = '\u2014', igStatus = 'unknown';\nlet ytVideoId = '\u2014', ytStatus = 'unknown';\n\ntry {\n  const igResult = $('Publish to Instagram').first().json;\n  igMediaId = igResult.ig_media_id || igResult.detail || igResult.error?.message || '\u2014';\n  igStatus = igResult.ig_media_id ? 'ok' : 'failed';\n} catch (e) {\n  igStatus = 'error: ' + e.message;\n}\n\ntry {\n  const ytResult = $('Publish to YouTube Shorts').first().json;\n  ytVideoId = ytResult.youtube_video_id || ytResult.id || ytResult.detail || '\u2014';\n  ytStatus = ytResult.youtube_video_id || ytResult.id ? 'ok' : 'failed';\n} catch (e) {\n  ytStatus = 'error: ' + e.message;\n}\n\nconsole.log('\\n\ud83c\udf89 PUBLISHED!');\nconsole.log('Preview URL  :', previewUrl);\nconsole.log('IG Media ID  :', igMediaId, '(' + igStatus + ')');\nconsole.log('YT Video ID  :', ytVideoId, '(' + ytStatus + ')');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igMediaId !== '\u2014' ? igMediaId : '',\n  ig_status: igStatus,\n  yt_video_id: ytVideoId !== '\u2014' ? ytVideoId : '',\n  yt_status: ytStatus,\n} }];"
+        "jsCode": "const previewId = $('Preview URL').first().json.preview_id;\nconst previewUrl = $('Preview URL').first().json.preview_url;\n\nlet igMediaId = '—', igStatus = 'unknown';\nlet ytVideoId = '—', ytStatus = 'unknown';\n\ntry {\n  const igResult = $('Publish to Instagram').first().json;\n  igMediaId = igResult.ig_media_id || igResult.detail || igResult.error?.message || '—';\n  igStatus = igResult.ig_media_id ? 'ok' : 'failed';\n} catch (e) {\n  igStatus = 'error: ' + e.message;\n}\n\ntry {\n  const ytResult = $('Publish to YouTube Shorts').first().json;\n  ytVideoId = ytResult.youtube_video_id || ytResult.id || ytResult.detail || '—';\n  ytStatus = ytResult.youtube_video_id || ytResult.id ? 'ok' : 'failed';\n} catch (e) {\n  ytStatus = 'error: ' + e.message;\n}\n\nconsole.log('\\n🎉 PUBLISHED!');\nconsole.log('Preview URL  :', previewUrl);\nconsole.log('IG Media ID  :', igMediaId, '(' + igStatus + ')');\nconsole.log('YT Video ID  :', ytVideoId, '(' + ytStatus + ')');\n\nreturn [{ json: {\n  status: 'published',\n  preview_id: previewId,\n  preview_url: previewUrl,\n  ig_media_id: igMediaId !== '—' ? igMediaId : '',\n  ig_status: igStatus,\n  yt_video_id: ytVideoId !== '—' ? ytVideoId : '',\n  yt_status: ytStatus,\n} }];"
       },
       "id": "published-log",
       "name": "Published!",
@@ -409,7 +409,7 @@
     },
     {
       "parameters": {
-        "jsCode": "console.log('Queue is empty \u2014 no pending rows in reels-queue.xlsx');\nreturn [{ json: { status: 'no_pending', message: 'Queue is empty.' } }];\n"
+        "jsCode": "console.log('Queue is empty — no pending rows in reels-queue.xlsx');\nreturn [{ json: { status: 'no_pending', message: 'Queue is empty.' } }];\n"
       },
       "id": "no-pending",
       "name": "Queue Empty (No-op)",
