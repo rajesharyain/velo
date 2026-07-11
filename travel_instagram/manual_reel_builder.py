@@ -712,7 +712,7 @@ def _render_caption_overlay(
     # ── Text fonts ────────────────────────────────────────────────────────
     title_font = _try_overlay_font_stack(
         _TITLE_FONT_STACK,
-        int(h * 0.052 * font_scale),
+        int(h * 0.038 * font_scale),
         system_bold_fallback=True,
     )
     sub_font = _try_overlay_font_stack(
@@ -751,8 +751,8 @@ def _render_caption_overlay(
     if body_lines:
         total_h += (block_gap if (title_lines or sub_lines) else 0) + bh
 
-    # Anchor text block at bottom third of frame (~74% from top), shifted up 10px.
-    cy_line = int(h * 0.74) - 10
+    # Vertically center the text block, matching the hook title-card layout.
+    cy_line = (h - total_h) // 2
 
     title_stroke = max(2, int(round(font_scale * 1.5)))
     sub_stroke = max(1, int(round(font_scale * 1.1)))
