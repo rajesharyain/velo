@@ -229,7 +229,8 @@
       "position": [
         1780,
         260
-      ]
+      ],
+      "continueOnFail": true
     },
     {
       "parameters": {
@@ -263,7 +264,7 @@
     },
     {
       "parameters": {
-        "jsCode": "const captionData = $('Generate Caption & Hashtags (AI)').first().json;\nconst ytMeta = $input.first().json;\nconst reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\n\nreturn [{ json: {\n  destination: pickData.destination,\n  video_url: reelData.video_url || '',\n  title: captionData.title || '',\n  caption: captionData.caption || '',\n  hashtags: captionData.hashtags || [],\n  hashtag_block: captionData.hashtag_block || '',\n  keywords: captionData.keywords || '',\n  formatted_post: captionData.formatted_post || '',\n  char_count: captionData.char_count || 0,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n  youtube_title: ytMeta.youtube_title || '',\n  youtube_description: ytMeta.youtube_description || '',\n  youtube_tags: ytMeta.youtube_tags || [],\n  youtube_pinned_comment: ytMeta.youtube_pinned_comment || '',\n  youtube_title_variations: ytMeta.youtube_title_variations || [],\n}}];\n"
+        "jsCode": "const reelData = $('Generate Reel (FFmpeg)').first().json;\nconst pickData = $('Pick Best Media Items').first().json;\nconst musicData = $('Fetch Music Track (Jamendo)').first().json;\n\n// Caption may be missing if Groq failed (continueOnFail) — use safe defaults\nlet captionData = {};\ntry { captionData = $('Generate Caption & Hashtags (AI)').first().json; } catch(e) {}\nlet ytMeta = {};\ntry { ytMeta = $('Generate YouTube Metadata (AI)').first().json; } catch(e) {}\n\nconst destination = pickData.destination || '';\nconst title = captionData.title || destination;\nconst caption = captionData.caption || `Discover the best of ${destination}. Visit budgetwing.com for cheap flights.`;\nconst hashtags = captionData.hashtags || [];\nconst hashtag_block = captionData.hashtag_block || '';\nconst keywords = captionData.keywords || '';\nconst formatted_post = captionData.formatted_post || `${caption}\\n\\n.\\n.\\n.\\n${hashtag_block}`;\n\nreturn [{ json: {\n  destination,\n  video_url: reelData.video_url || '',\n  title,\n  caption,\n  hashtags,\n  hashtag_block,\n  keywords,\n  formatted_post,\n  char_count: captionData.char_count || formatted_post.length,\n  within_limit: captionData.within_limit !== false,\n  reel_duration_secs: pickData.estimated_duration_secs || 0,\n  row_index: pickData.row_index,\n  groq_model: captionData.groq_model || '',\n  place_names: pickData.place_names || [],\n  music_source: musicData.source || 'none',\n  music_title: musicData.title || '',\n  music_artist: musicData.artist || '',\n  youtube_title: ytMeta.youtube_title || '',\n  youtube_description: ytMeta.youtube_description || '',\n  youtube_tags: ytMeta.youtube_tags || [],\n  youtube_pinned_comment: ytMeta.youtube_pinned_comment || '',\n  youtube_title_variations: ytMeta.youtube_title_variations || [],\n} }];\n"
       },
       "id": "assemble-preview",
       "name": "Assemble Preview Data",

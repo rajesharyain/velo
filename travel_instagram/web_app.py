@@ -770,6 +770,12 @@ RULES:
 - No itinerary. No bullet lists of places. No day-by-day structure.
 - Every caption must feel fresh — vary hooks, descriptions, and CTAs across different destinations.
 - Natural, conversational tone. Easy to read on mobile.
+
+JSON ENCODING RULES (critical — Groq often fails here):
+- The "caption" value MUST be a single JSON string. Use \\n for line breaks — NEVER put a real newline inside a JSON string value.
+- Example of CORRECT encoding: "caption": "Hook line.\\n\\nDescription.\\n\\nCTA.\\n\\nEngagement."
+- Example of WRONG encoding: "caption": "Hook line.\n\nDescription." ← literal newline breaks JSON
+- All string values must be properly JSON-escaped. No raw newlines, no unescaped quotes inside strings.
 """
 
 
@@ -820,6 +826,7 @@ async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse
         "Focus on inspiring the viewer with atmosphere and emotion, then direct them to the website."
     )
 
+    data: dict = {}
     try:
         client = _Groq(api_key=key)
         completion = await asyncio.to_thread(
@@ -836,7 +843,18 @@ async def instagram_generate_caption(body: InstagramCaptionBody) -> JSONResponse
         raw = completion.choices[0].message.content or ""
         data = json.loads(raw)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail=f"Groq caption generation failed: {exc}") from exc
+        logger.warning("Groq caption generation failed, using fallback: %s", exc)
+        data = {
+            "title": body.destination,
+            "caption": (
+                f"Discover the beauty of {body.destination}.\n\n"
+                "Planning your trip? Find cheap flights and build your own itinerary at budgetwing.com\n"
+                "🔗 Link in bio.\n\n"
+                "📌 Save this for your next adventure."
+            ),
+            "hashtags": ["Travel", "BudgetTravel", "HiddenGems"],
+            "keywords": f"{body.destination} | travel | budget travel | europe | flights",
+        }
 
     title = str(data.get("title") or "").strip()
     caption = str(data.get("caption") or "").strip()
