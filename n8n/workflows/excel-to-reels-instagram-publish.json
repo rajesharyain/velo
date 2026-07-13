@@ -415,12 +415,16 @@
         "rule": {
           "interval": [
             {
-              "field": "cronExpression",
-              "expression": "0 17 * * *"
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 17,
+              "triggerAtMinute": 0
             },
             {
-              "field": "cronExpression",
-              "expression": "0 5 * * *"
+              "field": "days",
+              "daysInterval": 1,
+              "triggerAtHour": 5,
+              "triggerAtMinute": 0
             }
           ]
         }
@@ -428,7 +432,7 @@
       "id": "daily-schedule-trigger",
       "name": "Daily Schedule Trigger",
       "type": "n8n-nodes-base.scheduleTrigger",
-      "typeVersion": 1.2,
+      "typeVersion": 1.1,
       "position": [
         240,
         440
